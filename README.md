@@ -1,2 +1,4 @@
 # hson
-JSON like format, which represent a HTML structure in a JSON style
+JSON like format, which represent a HTML structure in a JSON style.
+
+Work in progress
