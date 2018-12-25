@@ -1,0 +1,9 @@
+[package]
+name = "hson"
+version = "0.1.0"
+authors = ["Jonathan Sellam <jsellam@outbrain.com>"]
+edition = "2018"
+
+[dependencies]
+serde_json = "1.0.33"
+uuid = { version = "0.7.1", features = ["v4"] }
