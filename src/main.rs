@@ -47,7 +47,7 @@ struct Controls {
     double_quotes: u16
 }
 
-struct Hson {
+pub struct Hson {
     data: Vec<char>,
     nodes: HashMap<String, Node>,
     indexes: Vec<String>,
@@ -73,12 +73,29 @@ impl Hson {
         hson
     }
 
-    fn parse (&mut self, s: &str) -> Result<(), Error> {
+    pub fn new_slice (instances: u32) -> Hson {
+        let hson = Hson {
+            data: Vec::new(),
+            nodes: HashMap::new(),
+            indexes: Vec::new(),
+            instances,
+            controls: Controls {
+                chars: ['{', '}', '[', ']', ':', '"', ','],
+                curly_brackets: 0,
+                square_brackets: 0,
+                double_quotes: 0
+            }
+        };
+
+        hson
+    }
+
+    pub fn parse (&mut self, s: &str) -> Result<(), Error> {
         let mut data: Vec<char> = self.clean(&s);
         let mut previous = ' ';
         let mut before_colons = true;
         let mut string_just_closed = false;
-        let mut l = data.len() - 1;
+        let mut l = data.len();
         let mut i = 0;
 
         loop {
@@ -101,11 +118,13 @@ impl Hson {
             }
 
             // DEBUG
-//            println!("CHAR: {}", &c);
-//            println!("IN_STRING: {}", &in_string);
-//            println!("IN_ARRAY: {}", &in_array);
-//            println!("BEFORE_COLONS: {}", &before_colons);
-//            println!("STRING_CLOSED: {}", &string_just_closed);
+            /*
+            println!("CHAR: {}", &c);
+            println!("IN_STRING: {}", &in_string);
+            println!("IN_ARRAY: {}", &in_array);
+            println!("BEFORE_COLONS: {}", &before_colons);
+            println!("STRING_CLOSED: {}", &string_just_closed);
+            */
 
             // Is current char is a control character
             match self.controls.chars.iter().position(|&s| s == c && !in_string) {
@@ -144,7 +163,7 @@ impl Hson {
                             parent,
                             childs: Vec::new(),
                             key,
-                            value: [i + 1, self.data.len()],
+                            value: [i + 1, data.len()],
                             id: uid.clone(),
                             opened: true,
                             json,
@@ -192,23 +211,6 @@ impl Hson {
         }
 
         self.data = data;
-
-        // DEBUG
-        let num_keys = self.nodes.keys().len();
-        let mut i = 0;
-        loop {
-            for (key, value) in &self.nodes {
-                if value.instance == i {
-                    println!("{:?}", value);
-                }
-            }
-
-            i += 1;
-
-            if i as usize > num_keys {
-                break;
-            }
-        }
 
         Ok(())
     }
@@ -396,16 +398,45 @@ impl Hson {
             self.controls.square_brackets -= 1;
         }
     }
+
+    //DEBUG
+    fn print_nodes (&self) {
+        for (key, value) in &self.nodes {
+            println!("{} : {:?}", self.get_node_key(value), value);
+        }
+    }
+
+    fn print_data (&self) {
+        let s: String = self.data.iter().collect();
+        println!("{}", &s);
+    }
 }
 
 trait Query {
-    fn query (&self, q: &str) -> Result<Vec<&Node>, Error>;
+    fn query (&self, q: &str) -> Result<Vec<String>, Error>;
+
+    fn query_nodes (&self, q: &str) -> Result<Vec<&Node>, Error>;
 
     fn find (&self, elements: &Vec<String>, query: &mut Vec<&str>, first: bool) -> Result<Vec<String>, Error>;
 }
 
 impl Query for Hson {
-    fn query (&self, q: &str) -> Result<Vec<&Node>, Error> {
+    fn query (&self, q: &str) -> Result<Vec<String>, Error> {
+        let mut results = Vec::new();
+        let mut set = Vec::new();
+        let mut parts: Vec<&str> = q.split(" ").collect();
+
+        set.push(self.indexes[0].clone());
+
+        let ids = self.find(&set, &mut parts, true)?;
+        for uid in &ids {
+            results.push(uid.clone());
+        }
+
+        Ok(results)
+    }
+
+    fn query_nodes (&self, q: &str) -> Result<Vec<&Node>, Error> {
         let mut results = Vec::new();
         let mut set = Vec::new();
         let mut parts: Vec<&str> = q.split(" ").collect();
@@ -462,6 +493,140 @@ impl Query for Hson {
     }
 }
 
+trait Ops {
+    fn insert (&mut self, uid: &String, idx: usize, s: &str) -> Result<(), Error>;
+
+    fn remove (&mut self, node: &Node) -> Result<(), Error>;
+
+    fn insert_into_data (&mut self, hson: Hson, start: usize) -> Hson;
+
+    fn insert_into_nodes (&mut self, parent_id: String, start_idx: usize, mut hson: Hson) -> Hson;
+
+    fn right_push_instances (&mut self, start: u32, distance: u32, data_size: usize) -> Result<(), Error>;
+}
+
+impl Ops for Hson {
+    fn insert (&mut self, uid: &String, idx: usize, s: &str) -> Result<(), Error> {
+        match self.nodes.get(uid) {
+            Some(node) => {
+                let mut hson = Hson::new_slice(node.instance - 1);
+                hson.parse(s)?;
+
+                let num_keys = hson.nodes.keys().len() as u32;
+                let start = node.instance + 1;
+                let distance = num_keys - 1;
+                let start_idx = node.value[0] + 1;
+                let parent_id = node.id.clone();
+                let data_size = hson.data.len() - 2;
+
+                self.right_push_instances(start, distance, data_size);
+                hson = self.insert_into_data(hson, start_idx);
+                hson = self.insert_into_nodes(parent_id, start_idx, hson);
+
+                self.print_nodes();
+                self.print_data();
+
+                Ok(())
+            },
+            None => {
+                let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", uid));
+                return Err(e);
+            }
+        }
+    }
+
+    fn remove (&mut self, node: &Node) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn insert_into_data (&mut self, hson: Hson, start: usize) -> Hson {
+        let mut i = start;
+        let l = hson.data.len() - 2;
+
+        for (j, c) in hson.data.iter().enumerate() {
+            if j > 0 && j <= l {
+                self.data.insert(i, c.clone());
+                i += 1;
+            }
+        }
+
+        hson
+    }
+
+    fn insert_into_nodes (&mut self, parent_id: String, start_idx: usize, mut hson: Hson) -> Hson {
+        let mut root_id = String::from("");
+        let mut pos = start_idx;
+
+        for (i, key) in hson.indexes.iter().enumerate() {
+            match hson.nodes.remove_entry(key) {
+                Some((k, mut node)) => {
+                    if node.root {
+                        root_id = node.id;
+                    } else {
+                        if node.parent == root_id {
+                            node.parent = parent_id.clone();
+                        }
+
+                        let key_diff = node.key[1] - node.key[0];
+                        let value_diff = node.value[1] - node.value[0];
+                        let key_value_diff = node.value[0] - node.key[1];
+                        println!("{:?} : {:?}", node.key, node.value);
+                        node.key[0] = pos;
+                        pos += key_diff;
+                        node.key[1] = pos;
+                        pos += key_value_diff + 1;
+                        node.value[0] = pos;
+                        pos += value_diff;
+                        node.value[1] = pos;
+                        pos -= value_diff;
+                        println!("{:?} : {:?}", node.key, node.value);
+
+                        let idx = node.instance as usize;
+                        self.indexes.insert(idx, key.clone());
+                        self.nodes.insert(k, node);
+                    }
+                },
+                None => {}
+            }
+        }
+
+        hson
+    }
+
+    fn right_push_instances (&mut self, start: u32, distance: u32, data_size: usize) -> Result<(), Error> {
+        let l = self.indexes.len();
+        let mut i = 0;
+
+        match self.nodes.get_mut(&self.indexes[0]) {
+            Some(node) => node.value[1] += data_size,
+            None => {}
+        }
+
+        loop {
+            let key = &self.indexes[i];
+            match self.nodes.get_mut(key) {
+                Some(n) => {
+                    if n.instance >= start {
+                        n.instance += distance;
+                        n.key[0] += data_size;
+                        n.key[1] += data_size;
+                        n.value[0] += data_size;
+                        n.value[1] += data_size;
+                    }
+                },
+                None => {}
+            }
+
+            i += 1;
+            if i >= l {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 
 fn main() {
     let data = r#"{
@@ -489,11 +654,17 @@ fn main() {
     }"#;
 
     let mut hson = Hson::new();
-    match hson.parse(data){
-        Ok(_r) => {
-            let results = hson.query("div p attrs");
-            println!("{:?}", results);
-        },
-        Err(e) => { println!("{}", e) }
-    }
+
+    hson.parse(data).unwrap();
+    let results = hson.query("div p").unwrap();
+
+    println!("\n{:?}\n", results);
+    let child = r#"{
+                        "i": {
+                            "class": [],
+                            "text": "World"
+                        }
+                    }"#;
+
+    hson.insert(&results[1], 0, child).unwrap();
 }
