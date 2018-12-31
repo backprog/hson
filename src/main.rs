@@ -417,18 +417,20 @@ trait Query {
 
     fn query_nodes (&self, q: &str) -> Result<Vec<&Node>, Error>;
 
-    fn find (&self, elements: &Vec<String>, query: &mut Vec<&str>, first: bool) -> Result<Vec<String>, Error>;
+    fn find (&self, elements: &Vec<String>, mut query: Vec<&str>, first: bool) -> Result<Vec<String>, Error>;
+
+    fn get_all_childs (&self, node: &Node) -> Result<Vec<String>, Error>;
 }
 
 impl Query for Hson {
     fn query (&self, q: &str) -> Result<Vec<String>, Error> {
         let mut results = Vec::new();
         let mut set = Vec::new();
-        let mut parts: Vec<&str> = q.split(" ").collect();
+        let parts: Vec<&str> = q.split(" ").collect();
 
         set.push(self.indexes[0].clone());
 
-        let ids = self.find(&set, &mut parts, true)?;
+        let ids = self.find(&set, parts, true)?;
         for uid in &ids {
             results.push(uid.clone());
         }
@@ -439,11 +441,11 @@ impl Query for Hson {
     fn query_nodes (&self, q: &str) -> Result<Vec<&Node>, Error> {
         let mut results = Vec::new();
         let mut set = Vec::new();
-        let mut parts: Vec<&str> = q.split(" ").collect();
+        let parts: Vec<&str> = q.split(" ").collect();
 
         set.push(self.indexes[0].clone());
 
-        let ids = self.find(&set, &mut parts, true)?;
+        let ids = self.find(&set, parts, true)?;
         for uid in &ids {
             results.push(&self.nodes[uid]);
         }
@@ -451,7 +453,7 @@ impl Query for Hson {
         Ok(results)
     }
 
-    fn find (&self, elements: &Vec<String>, query: &mut Vec<&str>, first: bool) -> Result<Vec<String>, Error> {
+    fn find (&self, elements: &Vec<String>, mut query: Vec<&str>, first: bool) -> Result<Vec<String>, Error> {
         let mut results = Vec::new();
 
         if query.len() > 0 {
@@ -459,6 +461,8 @@ impl Query for Hson {
             let l = query.len();
 
             for uid in elements {
+                let mut q = query.clone();
+
                 match self.nodes.get(uid) {
                     Some(n) => {
                         if current.starts_with('#') {
@@ -473,18 +477,38 @@ impl Query for Hson {
                                 }
                             } else {
                                 if !first {
-                                    query.insert(0, current);
+                                    q.insert(0, current);
                                 }
                             }
                         }
 
-                        let mut res = self.find(&n.childs, query, false)?;
+                        let mut res = self.find(&n.childs, q, false)?;
                         results.append(&mut res);
                     },
                     None => {
-                        let e = Error::new(ErrorKind::InvalidData, format!("Cannot findnode uid {}", &uid));
+                        let e = Error::new(ErrorKind::InvalidData, format!("Cannot find node uid {}", &uid));
                         return Err(e);
                     }
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    fn get_all_childs (&self, node: &Node) -> Result<Vec<String>, Error> {
+        let mut results = Vec::new();
+
+        if node.childs.len() > 0 {
+            results.append(&mut node.childs.clone());
+
+            for uid in &node.childs {
+                match self.nodes.get(uid) {
+                    Some(n) => {
+                        let mut res = self.get_all_childs(n)?;
+                        results.append(&mut res);
+                    },
+                    None => {}
                 }
             }
         }
@@ -496,13 +520,19 @@ impl Query for Hson {
 trait Ops {
     fn insert (&mut self, uid: &String, idx: usize, s: &str) -> Result<(), Error>;
 
-    fn remove (&mut self, node: &Node) -> Result<(), Error>;
+    fn remove (&mut self, uid: &String) -> Result<(), Error>;
 
     fn insert_into_data (&mut self, hson: Hson, start: usize) -> Hson;
 
-    fn insert_into_nodes (&mut self, parent_id: String, start_idx: usize, mut hson: Hson) -> Hson;
+    fn insert_into_nodes (&mut self, parent_id: String, start_idx: usize, hson: Hson) -> Hson;
 
     fn right_push_instances (&mut self, start: u32, distance: u32, data_size: usize) -> Result<(), Error>;
+
+    fn remove_from_data (&mut self, node: &Node);
+
+    fn remove_from_nodes (&mut self, node: &Node);
+
+    fn left_push_instances (&mut self, start: u32, distance: u32, data_size: usize) -> Result<(), Error>;
 }
 
 impl Ops for Hson {
@@ -523,9 +553,6 @@ impl Ops for Hson {
                 hson = self.insert_into_data(hson, start_idx);
                 hson = self.insert_into_nodes(parent_id, start_idx, hson);
 
-                self.print_nodes();
-                self.print_data();
-
                 Ok(())
             },
             None => {
@@ -535,7 +562,26 @@ impl Ops for Hson {
         }
     }
 
-    fn remove (&mut self, node: &Node) -> Result<(), Error> {
+    fn remove (&mut self, uid: &String) -> Result<(), Error> {
+//        match self.nodes.get(&uid) {
+//            Some(node) => {
+//                let num_keys = hson.nodes.keys().len() as u32;
+//                let start = node.instance + 1;
+//                let distance = num_keys - 1;
+//                let start_idx = node.value[0] + 1;
+//                let node_id = node.id.clone();
+//                let data_size = node.value[1] - node.key[0];
+//
+//                self.remove_from_data(node);
+//                self.remove_from_nodes(node);
+//                self.left_push_instances(start, distance, data_size)?;
+//            },
+//            None => {
+//                let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", uid));
+//                return Err(e);
+//            }
+//        }
+
         Ok(())
     }
 
@@ -556,6 +602,7 @@ impl Ops for Hson {
     fn insert_into_nodes (&mut self, parent_id: String, start_idx: usize, mut hson: Hson) -> Hson {
         let mut root_id = String::from("");
         let mut pos = start_idx;
+        let mut previous_key = [0, 0];
 
         for (i, key) in hson.indexes.iter().enumerate() {
             match hson.nodes.remove_entry(key) {
@@ -565,21 +612,26 @@ impl Ops for Hson {
                     } else {
                         if node.parent == root_id {
                             node.parent = parent_id.clone();
+                            match self.nodes.get_mut(&parent_id) {
+                                Some(n) => n.childs.push(node.id.clone()),
+                                None => {}
+                            }
                         }
 
                         let key_diff = node.key[1] - node.key[0];
                         let value_diff = node.value[1] - node.value[0];
-                        let key_value_diff = node.value[0] - node.key[1];
-                        println!("{:?} : {:?}", node.key, node.value);
+
+                        if previous_key[1] > 0 {
+                            pos += node.key[0] - previous_key[1];
+                        }
+
+                        previous_key = node.key;
+
                         node.key[0] = pos;
-                        pos += key_diff;
-                        node.key[1] = pos;
-                        pos += key_value_diff + 1;
-                        node.value[0] = pos;
-                        pos += value_diff;
-                        node.value[1] = pos;
-                        pos -= value_diff;
-                        println!("{:?} : {:?}", node.key, node.value);
+                        node.key[1] = node.key[0] + key_diff;
+                        node.value[0] = node.key[1] + 1;
+                        node.value[1] = node.key[1] + value_diff;
+                        pos = node.key[1];
 
                         let idx = node.instance as usize;
                         self.indexes.insert(idx, key.clone());
@@ -612,6 +664,67 @@ impl Ops for Hson {
                         n.key[1] += data_size;
                         n.value[0] += data_size;
                         n.value[1] += data_size;
+                    }
+                },
+                None => {}
+            }
+
+            i += 1;
+            if i >= l {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn remove_from_data (&mut self, node: &Node) {
+        let begin = node.key[0];
+        let end = node.value[1];
+
+        self.data.splice(begin..end, vec!());
+    }
+
+    fn remove_from_nodes (&mut self, node: &Node) {
+        match self.nodes.get_mut(&node.parent) {
+            Some(n) => {
+                match n.childs.iter().position(|s| s == &node.id) {
+                    Some(i) => {
+                        n.childs.remove(i);
+                    },
+                    None => {}
+                }
+            },
+            None => {}
+        };
+
+        match self.indexes.iter().position(|s| s == &node.id) {
+            Some(i) => {
+                self.indexes.remove(i);
+            },
+            None => {}
+        };
+    }
+
+    fn left_push_instances (&mut self, start: u32, distance: u32, data_size: usize) -> Result<(), Error> {
+        let l = self.indexes.len();
+        let mut i = 0;
+
+        match self.nodes.get_mut(&self.indexes[0]) {
+            Some(node) => node.value[1] -= data_size,
+            None => {}
+        }
+
+        loop {
+            let key = &self.indexes[i];
+            match self.nodes.get_mut(key) {
+                Some(n) => {
+                    if n.instance >= start {
+                        n.instance -= distance;
+                        n.key[0] -= data_size;
+                        n.key[1] -= data_size;
+                        n.value[0] -= data_size;
+                        n.value[1] -= data_size;
                     }
                 },
                 None => {}
@@ -663,8 +776,24 @@ fn main() {
                         "i": {
                             "class": [],
                             "text": "World"
+                        },
+                        "ul": {
+                            "class": ["active","test"]
                         }
                     }"#;
 
     hson.insert(&results[1], 0, child).unwrap();
+    hson.print_nodes();
+    hson.print_data();
+    let results = hson.query("p").unwrap();
+    println!("\n{:?}\n", results);
+    match hson.nodes.get(&results[0]) {
+        Some(node) => {
+            let res = hson.get_all_childs(node).unwrap();
+            println!("\n{:?}\n", res);
+        },
+        None => {}
+    };
+
+    //hson.remove(&results[0]);
 }
