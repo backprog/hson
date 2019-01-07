@@ -1,0 +1,365 @@
+{
+  "div": {
+    "attrs": {
+      "class": [""],
+      "onClick": "doSomething",
+      "rel": <json>"{\"div\":[[\"abc\"],[\"cde\",\"fgh\"]]}"
+    },
+    "div": {
+      "p":{
+        "attrs": {
+          "id": "test-1"
+        },
+        "span": {
+          "text": "Hello",
+          "i": {
+            "attrs": {
+              "class": ["active", "green"]
+            }
+          }
+        },
+        "span": {
+          "text": "Hello",
+          "i": {
+            "attrs": {
+              "class": ["active", "green"]
+            }
+          }
+        }
+      },
+      "p": {
+        "attrs": {
+          "id": "test-1"
+        },
+        "span": {
+          "text": "Hello",
+          "i": {
+            "attrs": {
+              "class": ["active", "green"]
+            }
+          }
+        },
+        "span": {
+          "text": "Hello",
+          "i": {
+            "attrs": {
+              "class": ["active", "green"]
+            }
+          }
+        }
+      }
+    },
+    "div": {
+      "component": "test",
+      "attrs": {},
+      "onClick": "componentDoSomething",
+      "div": {
+        "div": {
+          "p":{
+            "attrs": {
+              "id": "test-1"
+            },
+            "span": {
+              "text": "Hello",
+              "i": {
+                "attrs": {
+                  "class": ["active", "green"]
+                }
+              }
+            },
+            "span": {
+              "text": "Hello",
+              "i": {
+                "attrs": {
+                  "class": ["active", "green"]
+                }
+              }
+            }
+          },
+          "p": {
+            "attrs": {
+              "id": "test-1"
+            },
+            "span": {
+              "text": "Hello",
+              "i": {
+                "attrs": {
+                  "class": ["active", "green"]
+                }
+              }
+            },
+            "span": {
+              "text": "Hello",
+              "i": {
+                "attrs": {
+                  "class": ["active", "green"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ul": {
+      "li": {
+        "attrs": {
+          "style": {
+            "color": "green",
+            "background-color": "red",
+            "text-align": "center"
+          }
+        },
+        "span": {
+          "attrs": {
+            "class": ["test-class", "item"]
+          },
+          "text": "lorem ipsum's"
+        }
+      },
+      "li": {
+        "attrs": {
+          "style": {
+            "color": "green",
+            "background-color": "red",
+            "text-align": "center"
+          }
+        },
+        "span": {
+          "attrs": {
+            "class": ["test-class", "item"]
+          },
+          "text": "lorem ipsum's"
+        }
+      },
+      "li": {
+        "attrs": {
+          "style": {
+            "color": "green",
+            "background-color": "red",
+            "text-align": "center"
+          }
+        },
+        "span": {
+          "attrs": {
+            "class": ["test-class", "item"]
+          },
+          "text": "lorem ipsum's"
+        }
+      },
+      "li": {
+        "attrs": {
+          "style": {
+            "color": "green",
+            "background-color": "red",
+            "text-align": "center"
+          }
+        },
+        "span": {
+          "attrs": {
+            "class": ["test-class", "item"]
+          },
+          "text": "lorem ipsum's"
+        }
+      },
+      "li": {
+        "attrs": {
+          "style": {
+            "color": "green",
+            "background-color": "red",
+            "text-align": "center"
+          }
+        },
+        "span": {
+          "attrs": {
+            "class": ["test-class", "item"]
+          },
+          "text": "lorem ipsum's"
+        }
+      },
+      "li": {
+        "attrs": {
+          "style": {
+            "color": "green",
+            "background-color": "red",
+            "text-align": "center"
+          }
+        },
+        "span": {
+          "attrs": {
+            "class": ["test-class", "item"]
+          },
+          "text": "lorem ipsum's"
+        }
+      },
+      "li": {
+        "attrs": {
+          "style": {
+            "color": "green",
+            "background-color": "red",
+            "text-align": "center"
+          }
+        },
+        "span": {
+          "attrs": {
+            "class": ["test-class", "item"]
+          },
+          "text": "lorem ipsum's"
+        }
+      },
+      "li": {
+        "attrs": {
+          "style": {
+            "color": "green",
+            "background-color": "red",
+            "text-align": "center"
+          }
+        },
+        "span": {
+          "attrs": {
+            "class": ["test-class", "item"]
+          },
+          "text": "lorem ipsum's"
+        }
+      },
+      "li": {
+        "attrs": {
+          "style": {
+            "color": "green",
+            "background-color": "red",
+            "text-align": "center"
+          }
+        },
+        "span": {
+          "attrs": {
+            "class": ["test-class", "item"]
+          },
+          "text": "lorem ipsum's"
+        }
+      }
+    },
+    "div": {
+      "ul": {
+        "li": {
+          "attrs": {
+            "style": {
+              "color": "green",
+              "background-color": "red",
+              "text-align": "center"
+            }
+          },
+          "span": {
+            "attrs": {
+              "class": ["test-class", "item"]
+            },
+            "text": "lorem ipsum's"
+          }
+        },
+        "li": {
+          "attrs": {
+            "style": {
+              "color": "green",
+              "background-color": "red",
+              "text-align": "center"
+            }
+          },
+          "span": {
+            "attrs": {
+              "class": ["test-class", "item"]
+            },
+            "text": "lorem ipsum's"
+          }
+        },
+        "li": {
+          "attrs": {
+            "style": {
+              "color": "green",
+              "background-color": "red",
+              "text-align": "center"
+            }
+          },
+          "span": {
+            "attrs": {
+              "class": ["test-class", "item"]
+            },
+            "text": "lorem ipsum's"
+          }
+        },
+        "li": {
+          "attrs": {
+            "style": {
+              "color": "green",
+              "background-color": "red",
+              "text-align": "center"
+            }
+          },
+          "span": {
+            "attrs": {
+              "class": ["test-class", "item"]
+            },
+            "text": "lorem ipsum's"
+          }
+        },
+        "li": {
+          "attrs": {
+            "style": {
+              "color": "green",
+              "background-color": "red",
+              "text-align": "center"
+            }
+          },
+          "span": {
+            "attrs": {
+              "class": ["test-class", "item"]
+            },
+            "text": "lorem ipsum's"
+          }
+        },
+        "li": {
+          "attrs": {
+            "style": {
+              "color": "green",
+              "background-color": "red",
+              "text-align": "center"
+            }
+          },
+          "span": {
+            "attrs": {
+              "class": ["test-class", "item"]
+            },
+            "text": "lorem ipsum's"
+          }
+        },
+        "li": {
+          "attrs": {
+            "style": {
+              "color": "green",
+              "background-color": "red",
+              "text-align": "center"
+            }
+          },
+          "span": {
+            "attrs": {
+              "class": ["test-class", "item"]
+            },
+            "text": "lorem ipsum's"
+          }
+        },
+        "li": {
+          "attrs": {
+            "style": {
+              "color": "green",
+              "background-color": "red",
+              "text-align": "center"
+            }
+          },
+          "span": {
+            "attrs": {
+              "class": ["test-class", "item"]
+            },
+            "text": "lorem ipsum's"
+          }
+        }
+      }
+    }
+  }
+}

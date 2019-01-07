@@ -1,9 +1,15 @@
+#![allow(unused_assignments)]
+
 extern crate uuid;
+
+use std::fs::File;
+use std::io::prelude::*;
 
 use std::collections::HashMap;
 use std::vec::Vec;
 use std::iter::FromIterator;
 use std::io::{ ErrorKind, Error };
+use std::time::{ Instant };
 
 use uuid::Uuid;
 
@@ -51,8 +57,9 @@ pub struct Hson {
     data: Vec<char>,
     nodes: HashMap<String, Node>,
     indexes: Vec<String>,
+    instances: u32,
     controls: Controls,
-    instances: u32
+    process_start: Instant
 }
 
 impl Hson {
@@ -67,7 +74,8 @@ impl Hson {
                 curly_brackets: 0,
                 square_brackets: 0,
                 double_quotes: 0
-            }
+            },
+            process_start: Instant::now()
         };
 
         hson
@@ -84,7 +92,8 @@ impl Hson {
                 curly_brackets: 0,
                 square_brackets: 0,
                 double_quotes: 0
-            }
+            },
+            process_start: Instant::now()
         };
 
         hson
@@ -143,7 +152,7 @@ impl Hson {
 
                         let uid = Uuid::new_v4().to_string();
                         let root = if i == 0 { true } else { false };
-                        let parent = if i == 0 { String::from("") } else { self.indexes[self.indexes.len() - 1].clone() };
+                        let parent = if i == 0 { String::from("") } else { self.get_previous_opened_node(self.indexes.len())? };
                         let key = if i == 0 { [0, 0] } else { self.get_node_key_position(i, &data)? };
                         let mut kind = if i == 0 { Kind::Node } else { self.get_node_kind(i, &data)? };
                         let mut json = false;
@@ -199,7 +208,12 @@ impl Hson {
                         };
                     }
                 },
-                None => {}
+                None => {
+                    if !in_string && before_colons {
+                        let e = Error::new(ErrorKind::InvalidData, format!("Invalid character {} at {}", c, i));
+                        return Err(e);
+                    }
+                }
             }
 
             previous = c;
@@ -275,19 +289,22 @@ impl Hson {
 
                 loop {
                     n += 1;
-                    if data[n] == ',' {
-                        let v: String = Vec::from_iter(data[i..n-1].iter().cloned()).into_iter().collect();
+                    match self.controls.chars.iter().position(|&s| s == data[n]) {
+                        Some(_) => {
+                            let v: String = Vec::from_iter(data[i+1..n-1].iter().cloned()).into_iter().collect();
 
-                        if v.parse::<i64>().is_ok() {
-                            k = Kind::Integer;
-                            break;
-                        } else if v.parse::<f64>().is_ok() {
-                            k = Kind::Float;
-                            break;
-                        } else {
-                            let e = Error::new(ErrorKind::InvalidData, format!("Invalid value {} at {}", v, i));
-                            return Err(e);
-                        }
+                            if v.parse::<i64>().is_ok() {
+                                k = Kind::Integer;
+                                break;
+                            } else if v.parse::<f64>().is_ok() {
+                                k = Kind::Float;
+                                break;
+                            } else {
+                                let e = Error::new(ErrorKind::InvalidData, format!("Invalid value {} at {}", v, i));
+                                return Err(e);
+                            }
+                        },
+                        None => {}
                     }
 
                     if n > data.len() {
@@ -364,7 +381,7 @@ impl Hson {
     fn clean (&self, s: &str) -> Vec<char> {
         let mut string_array = Vec::new();
 
-        for (i, c) in s.chars().enumerate() {
+        for (_i, c) in s.chars().enumerate() {
             if c != ' ' && c != '\t' && c != '\r' && c != '\n' {
                 string_array.push(c);
             }
@@ -400,15 +417,109 @@ impl Hson {
     }
 
     //DEBUG
-    fn print_nodes (&self) {
-        for (key, value) in &self.nodes {
-            println!("{} : {:?}", self.get_node_key(value), value);
+    fn print_nodes (&self, sorted: bool) {
+        if sorted {
+            let mut previous_instance = self.instances - self.indexes.len() as u32;
+
+            loop {
+                for (key, value) in &self.nodes {
+                    let node = self.nodes.get(key).unwrap();
+
+                    if node.instance == previous_instance + 1 {
+                        println!("{} : {:?}", self.get_node_key(value), value);
+                        previous_instance += 1;
+                    }
+                }
+
+                if previous_instance >= self.instances as u32 {
+                    break;
+                }
+            }
+        } else {
+            for (_key, value) in &self.nodes {
+                println!("{} : {:?}", self.get_node_key(value), value);
+            }
         }
     }
 
-    fn print_data (&self) {
-        let s: String = self.data.iter().collect();
-        println!("{}", &s);
+    fn print_data (&mut self, pretty: bool) {
+        if !pretty {
+            let s: String = self.data.iter().collect();
+            println!("{}", &s);
+        } else {
+            let mut i = 0;
+            let previous = ' ';
+            let mut indent = 0;
+            let l = self.data.len() - 1;
+
+            loop {
+                let c = self.data[i];
+                self.controls_count(&c, &previous);
+                let in_string = self.controls.double_quotes > 0 && c != DOUBLE_QUOTES && previous != '\\';
+                let in_array = self.controls.square_brackets > 0;
+
+                match self.controls.chars.iter().position(|&s| s == c && !in_string) {
+                    Some(_) => {
+                        match c {
+                            OPEN_CURLY => {
+                                print!("{}", c);
+                                indent += 1;
+                                print!("\n");
+                                for _t in 0..indent {
+                                    print!("\t");
+                                }
+                            },
+                            CLOSE_CURLY => {
+                                indent -= 1;
+                                print!("\n");
+                                for _t in 0..indent {
+                                    print!("\t");
+                                }
+                                print!("{}", c);
+                            },
+                            COMMA => {
+                                print!("{}", c);
+                                if !in_array {
+                                    print!("\n");
+                                    for _t in 0..indent {
+                                        print!("\t");
+                                    }
+                                }
+                            }
+                            _ => {
+                                print!("{}", c);
+                            }
+                        }
+                    },
+                    None => {
+                        print!("{}", c);
+                    }
+                }
+
+                i += 1;
+                if i > l {
+                    break;
+                }
+            }
+        }
+    }
+
+    fn print_indexes (&self) {
+        for idx in &self.indexes {
+            println!("{}", idx);
+        }
+    }
+
+    fn print_process_time (&self) {
+        let duration = self.process_start.elapsed();
+        println!("{:?}", duration);
+    }
+
+    fn print_controls (&self) {
+        println!("CURLY: {}\nSQUARE: {}\nQUOTES: {}",
+                 self.controls.curly_brackets,
+                 self.controls.square_brackets,
+                 self.controls.double_quotes);
     }
 }
 
@@ -417,9 +528,11 @@ trait Query {
 
     fn query_nodes (&self, q: &str) -> Result<Vec<&Node>, Error>;
 
-    fn find (&self, elements: &Vec<String>, mut query: Vec<&str>, first: bool) -> Result<Vec<String>, Error>;
+    fn find (&self, elements: &Vec<String>, query: Vec<&str>, first: bool) -> Result<Vec<String>, Error>;
 
-    fn get_all_childs (&self, node: &Node) -> Result<Vec<String>, Error>;
+    fn get_all_childs (&self, s: &String) -> Result<Vec<String>, Error>;
+
+    fn get_all_node_childs (&self, node: &Node) -> Result<Vec<&Node>, Error>;
 }
 
 impl Query for Hson {
@@ -496,16 +609,39 @@ impl Query for Hson {
         Ok(results)
     }
 
-    fn get_all_childs (&self, node: &Node) -> Result<Vec<String>, Error> {
+    fn get_all_childs (&self, s: &String) -> Result<Vec<String>, Error> {
+        match self.nodes.get(s) {
+            Some(node) => {
+                let mut results = Vec::new();
+
+                if node.childs.len() > 0 {
+                    results.append(&mut node.childs.clone());
+
+                    for uid in &node.childs {
+                        let mut res = self.get_all_childs(uid)?;
+                        results.append(&mut res);
+                    }
+                }
+
+                Ok(results)
+            },
+            None => {
+                let e = Error::new(ErrorKind::InvalidData, format!("Cannot find node uid {}", s));
+                return Err(e);
+            }
+        }
+    }
+
+    fn get_all_node_childs (&self, node: &Node) -> Result<Vec<&Node>, Error> {
         let mut results = Vec::new();
 
         if node.childs.len() > 0 {
-            results.append(&mut node.childs.clone());
-
             for uid in &node.childs {
                 match self.nodes.get(uid) {
                     Some(n) => {
-                        let mut res = self.get_all_childs(n)?;
+                        results.push(n);
+
+                        let mut res = self.get_all_node_childs(n)?;
                         results.append(&mut res);
                     },
                     None => {}
@@ -528,59 +664,109 @@ trait Ops {
 
     fn right_push_instances (&mut self, start: u32, distance: u32, data_size: usize) -> Result<(), Error>;
 
-    fn remove_from_data (&mut self, node: &Node);
+    fn remove_from_data (&mut self, begin: usize, end: usize);
 
-    fn remove_from_nodes (&mut self, node: &Node);
+    fn remove_from_nodes (&mut self, parent_id: &str, uid: &str);
 
     fn left_push_instances (&mut self, start: u32, distance: u32, data_size: usize) -> Result<(), Error>;
 }
 
 impl Ops for Hson {
     fn insert (&mut self, uid: &String, idx: usize, s: &str) -> Result<(), Error> {
+        let mut slice_range = 0;
+
         match self.nodes.get(uid) {
             Some(node) => {
+                let mut t = self.clean(&s);
+
+                if idx < node.childs.len() - 1 && t[t.len() - 2] != COMMA {
+                    t.insert(t.len() - 1, ',');
+                }
+
+                let s: String = t.into_iter().collect();
+                let s = s.as_str();
                 let mut hson = Hson::new_slice(node.instance - 1);
                 hson.parse(s)?;
+
+                match hson.nodes.get(&hson.indexes[0]) {
+                    Some(n) => {
+                       slice_range = n.value[1] - n.value[0];
+                    },
+                    None => {}
+                }
 
                 let num_keys = hson.nodes.keys().len() as u32;
                 let start = node.instance + 1;
                 let distance = num_keys - 1;
                 let start_idx = node.value[0] + 1;
                 let parent_id = node.id.clone();
-                let data_size = hson.data.len() - 2;
+                let mut data_size = hson.data.len() - 2;
+
+                if idx > 0 {
+                    let child_uid = match node.childs.get(idx) {
+                        Some(id) => id,
+                        None => {
+                            let e = Error::new(ErrorKind::InvalidData, format!("Invalid index {}", idx));
+                            return Err(e);
+                        }
+                    };
+                    let child = match self.nodes.get(child_uid) {
+                        Some(c) => c,
+                        None => {
+                            let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", child_uid));
+                            return Err(e);
+                        }
+                    };
+
+                    let start = child.instance + 1;
+                    let start_idx = child.value[1] + 1;
+                }
 
                 self.right_push_instances(start, distance, data_size);
                 hson = self.insert_into_data(hson, start_idx);
                 hson = self.insert_into_nodes(parent_id, start_idx, hson);
+            },
+            None => {
+                let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", uid));
+                return Err(e);
+            }
+        };
 
-                Ok(())
+        match self.nodes.get_mut(uid) {
+            Some(node) => {
+                node.value[1] += slice_range;
+            },
+            None => {}
+        };
+
+        Ok(())
+    }
+
+    fn remove (&mut self, uid: &String) -> Result<(), Error> {
+        match self.nodes.get(uid) {
+            Some(node) => {
+                let childs = self.get_all_childs(uid)?;
+                let instances_range = childs.len() + 1;
+                let start_instance = node.instance + childs.len() as u32 + 1;
+                let parent_id = node.parent.clone();
+                let mut data_start_pos = node.key[0];
+                let mut data_end_pos = node.value[1] + 1;
+                let mut data_size = node.value[1] - node.key[0] + 1;
+
+                if self.data[data_end_pos] == COMMA {
+                    data_end_pos += 1;
+                    data_size += 1;
+                }
+
+                self.left_push_instances(start_instance, instances_range as u32, data_size)?;
+                self.remove_from_data(data_start_pos, data_end_pos);
+                self.remove_from_nodes(&parent_id, uid);
             },
             None => {
                 let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", uid));
                 return Err(e);
             }
         }
-    }
-
-    fn remove (&mut self, uid: &String) -> Result<(), Error> {
-//        match self.nodes.get(&uid) {
-//            Some(node) => {
-//                let num_keys = hson.nodes.keys().len() as u32;
-//                let start = node.instance + 1;
-//                let distance = num_keys - 1;
-//                let start_idx = node.value[0] + 1;
-//                let node_id = node.id.clone();
-//                let data_size = node.value[1] - node.key[0];
-//
-//                self.remove_from_data(node);
-//                self.remove_from_nodes(node);
-//                self.left_push_instances(start, distance, data_size)?;
-//            },
-//            None => {
-//                let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", uid));
-//                return Err(e);
-//            }
-//        }
 
         Ok(())
     }
@@ -675,20 +861,19 @@ impl Ops for Hson {
             }
         }
 
+        self.instances += distance;
+
         Ok(())
     }
 
-    fn remove_from_data (&mut self, node: &Node) {
-        let begin = node.key[0];
-        let end = node.value[1];
-
+    fn remove_from_data (&mut self, begin: usize, end: usize) {
         self.data.splice(begin..end, vec!());
     }
 
-    fn remove_from_nodes (&mut self, node: &Node) {
-        match self.nodes.get_mut(&node.parent) {
+    fn remove_from_nodes (&mut self, parent_id: &str, uid: &str) {
+        match self.nodes.get_mut(parent_id) {
             Some(n) => {
-                match n.childs.iter().position(|s| s == &node.id) {
+                match n.childs.iter().position(|s| s == uid) {
                     Some(i) => {
                         n.childs.remove(i);
                     },
@@ -698,12 +883,29 @@ impl Ops for Hson {
             None => {}
         };
 
-        match self.indexes.iter().position(|s| s == &node.id) {
+        match self.indexes.iter().position(|s| s == uid) {
             Some(i) => {
                 self.indexes.remove(i);
             },
             None => {}
         };
+
+        match self.get_all_childs(&uid.to_string()) {
+            Ok(childs) => {
+                for child in childs {
+                    self.nodes.remove(&child);
+                    match self.indexes.iter().position(|s| s == &child) {
+                        Some(i) => {
+                            self.indexes.remove(i);
+                        },
+                        None => {}
+                    };
+                }
+            },
+            Err(e) => {}
+        };
+
+        self.nodes.remove(uid);
     }
 
     fn left_push_instances (&mut self, start: u32, distance: u32, data_size: usize) -> Result<(), Error> {
@@ -736,42 +938,31 @@ impl Ops for Hson {
             }
         }
 
+        self.instances -= distance;
+
         Ok(())
     }
 }
 
 
 fn main() {
-    let data = r#"{
-    	"div": {
-            "attrs": {
-                "class": [""],
-                "onClick": "doSomething",
-                "rel": <json>"{\"div\":[[\"abc\"],[\"cde\",\"fgh\"]]}"
-            },
-            "div": {
-                "p":{
-                    "attrs": {},
-                    "span": {
-                        "text": "Hello"
-                    }
-                },
-                "p": {}
-            },
-            "div": {
-                "component": "test",
-                "attrs": {},
-                "onClick": "componentDoSomething"
-            }
-	    }
-    }"#;
+    let mut data = String::new();
+    let mut file = File::open("samples/small.hson").unwrap();
+    file.read_to_string(&mut data).unwrap();
 
     let mut hson = Hson::new();
+    hson.parse(&data).unwrap();
+//    hson.print_process_time();
 
-    hson.parse(data).unwrap();
+    print!("ON PARSE\n");
+    hson.print_nodes(true);
+    hson.print_data(true);
+//    hson.print_controls();
+    print!("\n\n");
+
     let results = hson.query("div p").unwrap();
-
     println!("\n{:?}\n", results);
+
     let child = r#"{
                         "i": {
                             "class": [],
@@ -782,18 +973,20 @@ fn main() {
                         }
                     }"#;
 
-    hson.insert(&results[1], 0, child).unwrap();
-    hson.print_nodes();
-    hson.print_data();
+    hson.insert(&results[0], 0, child).unwrap();
+
+    print!("ON INSERT\n");
+    hson.print_nodes(true);
+    hson.print_data(true);
+    print!("\n\n");
+
     let results = hson.query("p").unwrap();
     println!("\n{:?}\n", results);
-    match hson.nodes.get(&results[0]) {
-        Some(node) => {
-            let res = hson.get_all_childs(node).unwrap();
-            println!("\n{:?}\n", res);
-        },
-        None => {}
-    };
+    print!("\n\n");
 
-    //hson.remove(&results[0]);
+    hson.remove(&results[0]);
+
+    print!("ON REMOVE\n");
+    hson.print_nodes(true);
+    hson.print_data(true);
 }

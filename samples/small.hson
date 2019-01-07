@@ -1,0 +1,23 @@
+{
+  "div": {
+    "attrs": {
+      "class": [""],
+      "onClick": "doSomething",
+      "rel": <json>"{\"div\":[[\"abc\"],[\"cde\",\"fgh\"]]}"
+    },
+    "div": {
+      "p": {
+        "attrs": {},
+        "span": {
+          "text": "Hello"
+        }
+      },
+      "p": {}
+    },
+    "div": {
+      "component": "test",
+      "attrs": {},
+      "onClick": "componentDoSomething"
+    }
+  }
+}
