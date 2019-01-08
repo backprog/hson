@@ -669,6 +669,8 @@ trait Ops {
     fn remove_from_nodes (&mut self, parent_id: &str, uid: &str);
 
     fn left_push_instances (&mut self, start: u32, distance: u32, data_size: usize) -> Result<(), Error>;
+
+    fn insert_comma (&mut self, uid: String, parent_uid: String);
 }
 
 impl Ops for Hson {
@@ -678,32 +680,13 @@ impl Ops for Hson {
         match self.nodes.get(uid) {
             Some(node) => {
                 let mut t = self.clean(&s);
-
-                if idx < node.childs.len() - 1 && t[t.len() - 2] != COMMA {
-                    t.insert(t.len() - 1, ',');
-                }
-
-                let s: String = t.into_iter().collect();
-                let s = s.as_str();
-                let mut hson = Hson::new_slice(node.instance - 1);
-                hson.parse(s)?;
-
-                match hson.nodes.get(&hson.indexes[0]) {
-                    Some(n) => {
-                       slice_range = n.value[1] - n.value[0];
-                    },
-                    None => {}
-                }
-
-                let num_keys = hson.nodes.keys().len() as u32;
-                let start = node.instance + 1;
-                let distance = num_keys - 1;
-                let start_idx = node.value[0] + 1;
+                let mut start_instance = node.instance - 1;
+                let mut start = node.instance + 1;
+                let mut start_idx = node.value[0] + 1;
                 let parent_id = node.id.clone();
-                let mut data_size = hson.data.len() - 2;
 
                 if idx > 0 {
-                    let child_uid = match node.childs.get(idx) {
+                    let child_uid = match node.childs.get(idx - 1) {
                         Some(id) => id,
                         None => {
                             let e = Error::new(ErrorKind::InvalidData, format!("Invalid index {}", idx));
@@ -711,16 +694,51 @@ impl Ops for Hson {
                         }
                     };
                     let child = match self.nodes.get(child_uid) {
-                        Some(c) => c,
+                        Some(c) => {
+                            if c.childs.len() > 0 {
+                                match self.nodes.get(&c.childs[c.childs.len() - 1]) {
+                                    Some(sc) => sc,
+                                    None => c
+                                }
+                            } else {
+                                c
+                            }
+                        },
                         None => {
                             let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", child_uid));
                             return Err(e);
                         }
                     };
 
-                    let start = child.instance + 1;
-                    let start_idx = child.value[1] + 1;
+                    start = child.instance + 1;
+                    start_instance = child.instance - 1;
+                    start_idx = child.value[1] + 2;
                 }
+
+                if idx < node.childs.len() && t[t.len() - 2] != COMMA {
+                    t.insert(t.len() - 1, ',');
+                } else if idx >= node.childs.len() {
+                    let last_child_uid = node.childs[node.childs.len() - 1].clone();
+                    let current_uid = node.id.clone();
+                    self.insert_comma(last_child_uid, current_uid);
+                    start_idx += 1;
+                }
+
+                let s: String = t.into_iter().collect();
+                let s = s.as_str();
+                let mut hson = Hson::new_slice(start_instance);
+                hson.parse(s)?;
+
+                match hson.nodes.get(&hson.indexes[0]) {
+                    Some(n) => {
+                        slice_range = n.value[1] - n.value[0];
+                    },
+                    None => {}
+                }
+
+                let num_keys = hson.nodes.keys().len() as u32;
+                let distance = num_keys - 1;
+                let mut data_size = hson.data.len() - 2;
 
                 self.right_push_instances(start, distance, data_size);
                 hson = self.insert_into_data(hson, start_idx);
@@ -815,8 +833,8 @@ impl Ops for Hson {
 
                         node.key[0] = pos;
                         node.key[1] = node.key[0] + key_diff;
-                        node.value[0] = node.key[1] + 1;
-                        node.value[1] = node.key[1] + value_diff;
+                        node.value[0] = node.key[1] + 2;
+                        node.value[1] = node.value[0] + value_diff;
                         pos = node.key[1];
 
                         let idx = node.instance as usize;
@@ -942,6 +960,51 @@ impl Ops for Hson {
 
         Ok(())
     }
+
+    fn insert_comma (&mut self, uid: String, parent_uid: String) {
+        match self.nodes.get(&uid) {
+            Some(node) => {
+                let mut instance = node.instance;
+                let pos = node.value[1] + 1;
+                let mut i = 0;
+
+                if node.childs.len() > 0 {
+                    match self.nodes.get(&node.childs[node.childs.len() - 1]) {
+                        Some(child) => {
+                            instance = child.instance;
+                        },
+                        None => {}
+                    }
+                }
+
+                self.data.insert(pos, ',');
+                loop {
+                    let idx = &self.indexes[i];
+                    match self.nodes.get_mut(idx) {
+                        Some(n) => {
+                            if i == 0 {
+                                n.value[1] += 1;
+                            } else if n.instance > instance {
+                                n.key[0] += 1;
+                                n.key[1] += 1;
+                                n.value[0] += 1;
+                                n.value[1] += 1;
+                            } else if n.id == parent_uid {
+                                n.value[1] += 1;
+                            }
+                        },
+                        None => {}
+                    }
+
+                    i += 1;
+                    if i >= self.indexes.len() {
+                        break;
+                    }
+                }
+            },
+            None => {}
+        };
+    }
 }
 
 
@@ -973,7 +1036,7 @@ fn main() {
                         }
                     }"#;
 
-    hson.insert(&results[0], 0, child).unwrap();
+    hson.insert(&results[0], 2, child).unwrap();
 
     print!("ON INSERT\n");
     hson.print_nodes(true);
