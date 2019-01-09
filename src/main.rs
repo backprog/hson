@@ -64,7 +64,8 @@ pub struct Hson {
     indexes: Vec<String>,
     instances: u32,
     controls: Controls,
-    process_start: Instant
+    process_start: Instant,
+    vec_it: Vec<String>
 }
 
 impl Hson {
@@ -81,7 +82,8 @@ impl Hson {
                 square_brackets: 0,
                 double_quotes: 0
             },
-            process_start: Instant::now()
+            process_start: Instant::now(),
+            vec_it: Vec::new()
         };
 
         hson
@@ -100,7 +102,8 @@ impl Hson {
                 square_brackets: 0,
                 double_quotes: 0
             },
-            process_start: Instant::now()
+            process_start: Instant::now(),
+            vec_it: Vec::new()
         };
 
         hson
@@ -236,6 +239,7 @@ impl Hson {
         }
 
         self.data = data;
+        self.fill_iterator();
 
         Ok(())
     }
@@ -434,112 +438,27 @@ impl Hson {
         }
     }
 
-    //DEBUG
-    fn print_nodes (&self, sorted: bool) {
-        if sorted {
-            let mut previous_instance = self.instances - self.indexes.len() as u32;
+    fn fill_iterator (&mut self) {
+        self.vec_it.clear();
+        let mut previous_instance = self.instances - self.indexes.len() as u32;
 
-            loop {
-                for (key, value) in &self.nodes {
-                    let node = self.nodes.get(key).unwrap();
+        loop {
+            for (key, _value) in &self.nodes {
+                let node = self.nodes.get(key).unwrap();
 
-                    if node.instance == previous_instance + 1 {
-                        println!("{} : {:?}", self.get_node_key(value), value);
-                        previous_instance += 1;
-                    }
-                }
-
-                if previous_instance >= self.instances as u32 {
-                    break;
+                if node.instance == previous_instance + 1 {
+                    self.vec_it.push(node.id.clone());
+                    previous_instance += 1;
                 }
             }
-        } else {
-            for (_key, value) in &self.nodes {
-                println!("{} : {:?}", self.get_node_key(value), value);
+
+            if previous_instance >= self.instances as u32 {
+                break;
             }
         }
-    }
-
-    fn print_data (&mut self, pretty: bool) {
-        if !pretty {
-            let s: String = self.data.iter().collect();
-            println!("{}", &s);
-        } else {
-            let mut i = 0;
-            let previous = ' ';
-            let mut indent = 0;
-            let l = self.data.len() - 1;
-
-            loop {
-                let c = self.data[i];
-                self.controls_count(&c, &previous);
-                let in_string = self.controls.double_quotes > 0 && c != DOUBLE_QUOTES && previous != '\\';
-                let in_array = self.controls.square_brackets > 0;
-
-                match self.controls.chars.iter().position(|&s| s == c && !in_string) {
-                    Some(_) => {
-                        match c {
-                            OPEN_CURLY => {
-                                print!("{}", c);
-                                indent += 1;
-                                print!("\n");
-                                for _t in 0..indent {
-                                    print!("\t");
-                                }
-                            },
-                            CLOSE_CURLY => {
-                                indent -= 1;
-                                print!("\n");
-                                for _t in 0..indent {
-                                    print!("\t");
-                                }
-                                print!("{}", c);
-                            },
-                            COMMA => {
-                                print!("{}", c);
-                                if !in_array {
-                                    print!("\n");
-                                    for _t in 0..indent {
-                                        print!("\t");
-                                    }
-                                }
-                            }
-                            _ => {
-                                print!("{}", c);
-                            }
-                        }
-                    },
-                    None => {
-                        print!("{}", c);
-                    }
-                }
-
-                i += 1;
-                if i > l {
-                    break;
-                }
-            }
-        }
-    }
-
-    fn print_indexes (&self) {
-        for idx in &self.indexes {
-            println!("{}", idx);
-        }
-    }
-
-    fn print_process_time (&self) {
-        let duration = self.process_start.elapsed();
-        println!("{:?}", duration);
-    }
-
-    fn print_controls (&self) {
-        println!("CURLY: {}\nSQUARE: {}\nQUOTES: {}",
-                 self.controls.curly_brackets,
-                 self.controls.square_brackets,
-                 self.controls.double_quotes);
     }
 }
+
 
 trait Query {
     fn query (&self, q: &str) -> Result<Vec<String>, Error>;
@@ -680,6 +599,7 @@ impl Query for Hson {
     }
 }
 
+
 trait Ops {
     fn insert (&mut self, uid: &String, idx: usize, s: &str) -> Result<(), Error>;
 
@@ -797,6 +717,8 @@ impl Ops for Hson {
             None => {}
         };
 
+        self.fill_iterator();
+
         Ok(())
     }
 
@@ -826,6 +748,8 @@ impl Ops for Hson {
                 return Err(e);
             }
         }
+
+        self.fill_iterator();
 
         Ok(())
     }
@@ -1061,6 +985,141 @@ impl Ops for Hson {
 }
 
 
+trait Debug {
+    fn print_nodes (&self, sorted: bool);
+
+    fn print_data (&mut self, pretty: bool);
+
+    fn print_indexes (&self);
+
+    fn print_process_time (&self);
+
+    fn print_controls (&self);
+}
+
+impl Debug for Hson {
+    fn print_nodes (&self, sorted: bool) {
+        if sorted {
+            let mut previous_instance = self.instances - self.indexes.len() as u32;
+
+            loop {
+                for (key, value) in &self.nodes {
+                    let node = self.nodes.get(key).unwrap();
+
+                    if node.instance == previous_instance + 1 {
+                        println!("{} : {:?}", self.get_node_key(value), value);
+                        previous_instance += 1;
+                    }
+                }
+
+                if previous_instance >= self.instances as u32 {
+                    break;
+                }
+            }
+        } else {
+            for (_key, value) in &self.nodes {
+                println!("{} : {:?}", self.get_node_key(value), value);
+            }
+        }
+    }
+
+    fn print_data (&mut self, pretty: bool) {
+        if !pretty {
+            let s: String = self.data.iter().collect();
+            println!("{}", &s);
+        } else {
+            let mut i = 0;
+            let previous = ' ';
+            let mut indent = 0;
+            let l = self.data.len() - 1;
+
+            loop {
+                let c = self.data[i];
+                self.controls_count(&c, &previous);
+                let in_string = self.controls.double_quotes > 0 && c != DOUBLE_QUOTES && previous != '\\';
+                let in_array = self.controls.square_brackets > 0;
+
+                match self.controls.chars.iter().position(|&s| s == c && !in_string) {
+                    Some(_) => {
+                        match c {
+                            OPEN_CURLY => {
+                                print!("{}", c);
+                                indent += 1;
+                                print!("\n");
+                                for _t in 0..indent {
+                                    print!("\t");
+                                }
+                            },
+                            CLOSE_CURLY => {
+                                indent -= 1;
+                                print!("\n");
+                                for _t in 0..indent {
+                                    print!("\t");
+                                }
+                                print!("{}", c);
+                            },
+                            COMMA => {
+                                print!("{}", c);
+                                if !in_array {
+                                    print!("\n");
+                                    for _t in 0..indent {
+                                        print!("\t");
+                                    }
+                                }
+                            }
+                            _ => {
+                                print!("{}", c);
+                            }
+                        }
+                    },
+                    None => {
+                        print!("{}", c);
+                    }
+                }
+
+                i += 1;
+                if i > l {
+                    break;
+                }
+            }
+        }
+    }
+
+    fn print_indexes (&self) {
+        for idx in &self.indexes {
+            println!("{}", idx);
+        }
+    }
+
+    fn print_process_time (&self) {
+        let duration = self.process_start.elapsed();
+        println!("{:?}", duration);
+    }
+
+    fn print_controls (&self) {
+        println!("CURLY: {}\nSQUARE: {}\nQUOTES: {}",
+                 self.controls.curly_brackets,
+                 self.controls.square_brackets,
+                 self.controls.double_quotes);
+    }
+}
+
+
+impl Iterator for Hson {
+    type Item = String;
+
+    fn next (&mut self) -> Option<String> {
+        if !self.vec_it.is_empty() {
+            let id = self.vec_it.remove(0);
+            Some(id)
+        } else {
+            self.fill_iterator();
+            None
+        }
+    }
+}
+
+
 fn main() {
     let mut data = String::new();
     let mut file = File::open("samples/small.hson").unwrap();
@@ -1068,16 +1127,34 @@ fn main() {
 
     let mut hson = Hson::new();
     hson.parse(&data).unwrap();
+
+//    loop {
+//        let id = match hson.next() {
+//            Some(s) => s,
+//            None => break
+//        };
+//
+//        match &hson.nodes.get(&id) {
+//            Some(node) => {
+//                println ! ("{} : {}", node.instance, node.id);
+//            }
+//            None => {
+//                break
+//            }
+//        }
+//    }
+
 //    hson.print_process_time();
 
-    print!("ON PARSE\n");
-    hson.print_nodes(true);
-    hson.print_data(true);
+//    print!("ON PARSE\n");
+//    hson.print_indexes();
+//    hson.print_nodes(true);
+//    hson.print_data(true);
 //    hson.print_controls();
-    print!("\n\n");
+//    print!("\n\n");
 
     let results = hson.query("div p").unwrap();
-    println!("\n{:?}\n", results);
+//    println!("\n{:?}\n", results);
 
     let child = r#"{
                         "i": {
@@ -1090,19 +1167,41 @@ fn main() {
                     }"#;
 
     hson.insert(&results[0], 2, child).unwrap();
+//
+//    print!("ON INSERT\n");
 
-    print!("ON INSERT\n");
-    hson.print_nodes(true);
-    hson.print_data(true);
-    print!("\n\n");
+    loop {
+        let id = match hson.next() {
+            Some(s) => s,
+            None => break
+        };
 
-    let results = hson.query("p").unwrap();
-    println!("\n{:?}\n", results);
-    print!("\n\n");
+        match &hson.nodes.get(&id) {
+            Some(node) => {
+                println ! ("{} : {}", node.instance, node.id);
+            }
+            None => {
+                break
+            }
+        }
+    }
 
-    hson.remove(&results[0]).unwrap();
+//    hson.print_indexes();
+//    hson.print_nodes(true);
+//    hson.print_data(true);
+//    print!("\n\n");
+//
+//    let results = hson.query("p").unwrap();
+//    println!("\n{:?}\n", results);
+//    print!("\n\n");
+//
+//    hson.remove(&results[0]).unwrap();
+//
+//    print!("ON REMOVE\n");
+//    hson.print_nodes(true);
+//    hson.print_data(true);
 
-    print!("ON REMOVE\n");
-    hson.print_nodes(true);
-    hson.print_data(true);
+    for id in hson {
+        println!("{}", id);
+    }
 }
