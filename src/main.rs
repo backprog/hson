@@ -5,7 +5,6 @@ extern crate uuid;
 
 use std::fs::File;
 use std::io::prelude::*;
-
 use std::collections::HashMap;
 use std::vec::Vec;
 use std::iter::FromIterator;
@@ -22,6 +21,7 @@ const CLOSE_ARR: char = ']';
 const DOUBLE_QUOTES: char = '"';
 const COLONS: char = ':';
 const COMMA: char = ',';
+
 
 /// Node types
 #[derive(PartialEq, Debug)]
@@ -241,7 +241,7 @@ impl Hson {
         self.data = data;
         self.fill_iterator();
 
-        Ok(())
+        self.validate()
     }
 
     /// Remove format tags
@@ -457,6 +457,23 @@ impl Hson {
             }
         }
     }
+
+    fn validate (&self) -> Result<(), Error> {
+        for (_key, value) in &self.nodes {
+            if value.opened {
+                let mut key = self.get_node_key(value);
+
+                if key.is_empty() {
+                    key = String::from("root");
+                }
+
+                let e = Error::new(ErrorKind::InvalidData, format!("Invalid data at `{}`", key));
+                return Err(e);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 
@@ -519,23 +536,17 @@ impl Query for Hson {
 
                 match self.nodes.get(uid) {
                     Some(n) => {
-                        if current.starts_with('#') {
+                        let key = if first { String::from("") } else { self.get_node_key(&n) };
 
-                        } else if current.starts_with('.') {
-
+                        // If the node's key match the query slice and it reached the last slice of the query
+                        if &key == current {
+                            if l == 0 {
+                                results.push(uid.clone());
+                            }
                         } else {
-                            let key = if first { String::from("") } else { self.get_node_key(&n) };
-
-                            // If the node's key match the query slice and it reached the last slice of the query
-                            if &key == current {
-                                if l == 0 {
-                                    results.push(uid.clone());
-                                }
-                            } else {
-                                // If not the first call of the method and the key does not match, insert back the query slice
-                                if !first {
-                                    q.insert(0, current);
-                                }
+                            // If not the first call of the method and the key does not match, insert back the query slice
+                            if !first {
+                                q.insert(0, current);
                             }
                         }
 
@@ -1120,6 +1131,22 @@ impl Iterator for Hson {
 }
 
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn can_parse () {
+        let mut data = String::new();
+        let mut file = File::open("samples/small.hson").unwrap();
+        file.read_to_string(&mut data).unwrap();
+
+        let mut hson = Hson::new();
+        assert_eq!(hson.parse(&data).unwrap(), ());
+    }
+}
+
+
 fn main() {
     let mut data = String::new();
     let mut file = File::open("samples/small.hson").unwrap();
@@ -1170,25 +1197,25 @@ fn main() {
 //
 //    print!("ON INSERT\n");
 
-    loop {
-        let id = match hson.next() {
-            Some(s) => s,
-            None => break
-        };
-
-        match &hson.nodes.get(&id) {
-            Some(node) => {
-                println ! ("{} : {}", node.instance, node.id);
-            }
-            None => {
-                break
-            }
-        }
-    }
+//    loop {
+//        let id = match hson.next() {
+//            Some(s) => s,
+//            None => break
+//        };
+//
+//        match &hson.nodes.get(&id) {
+//            Some(node) => {
+//                println ! ("{} : {}", node.instance, node.id);
+//            }
+//            None => {
+//                break
+//            }
+//        }
+//    }
 
 //    hson.print_indexes();
-//    hson.print_nodes(true);
-//    hson.print_data(true);
+    hson.print_nodes(true);
+    hson.print_data(true);
 //    print!("\n\n");
 //
 //    let results = hson.query("p").unwrap();
@@ -1201,7 +1228,7 @@ fn main() {
 //    hson.print_nodes(true);
 //    hson.print_data(true);
 
-    for id in hson {
-        println!("{}", id);
-    }
+//    for id in hson {
+//        println!("{}", id);
+//    }
 }
