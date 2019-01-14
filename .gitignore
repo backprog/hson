@@ -2,4 +2,5 @@
 /cmake-build-debug
 **/*.rs.bk
 .idea
-main.rs
+src/main.rs
+Cargo.lock
