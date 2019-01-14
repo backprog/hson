@@ -161,9 +161,10 @@ impl Hson {
                         }
 
                         let uid = Uuid::new_v4().to_string();
-                        let root = if i == 0 { true } else { false };
+                        let root = i == 0;
                         let parent = if i == 0 { String::from("") } else { self.get_previous_opened_node(self.indexes.len())? };
                         let key = if i == 0 { [0, 0] } else { self.get_node_key_position(i, &data)? };
+                        let value = if i == 0 { [i, data.len()] } else { [i + 1, data.len()] };
                         let mut kind = if i == 0 { Kind::Node } else { self.get_node_kind(i, &data)? };
                         let mut json = false;
 
@@ -184,7 +185,7 @@ impl Hson {
                             parent,
                             childs: Vec::new(),
                             key,
-                            value: [i + 1, data.len()],
+                            value,
                             id: uid.clone(),
                             opened: true,
                             json,
@@ -242,17 +243,8 @@ impl Hson {
         self.validate()
     }
 
-    /// Remove format tags
-    fn remove_type (&self, pos: usize, data: &mut Vec<char>, kind: &str) -> usize {
-        if kind == "json" {
-            data.splice(pos+1..pos+7, vec!());
-        }
-
-        data.len()
-    }
-
     /// Retrieve a node key
-    fn get_node_key (&self, n: &Node) -> String {
+    pub fn get_node_key (&self, n: &Node) -> String {
         let mut key = String::from("");
         let start = n.key[0] + 1;
         let end = n.key[1];
@@ -262,6 +254,28 @@ impl Hson {
         }
 
         key
+    }
+
+    /// Retrieve a node value
+    pub fn get_node_value (&self, n: &Node) -> String {
+        let mut value = String::from("");
+        let start = n.value[0] + 1;
+        let end = n.value[1];
+
+        for i in start..end {
+            value.push(self.data[i]);
+        }
+
+        value
+    }
+
+    /// Remove format tags
+    fn remove_type (&self, pos: usize, data: &mut Vec<char>, kind: &str) -> usize {
+        if kind == "json" {
+            data.splice(pos+1..pos+7, vec!());
+        }
+
+        data.len()
     }
 
     /// Retrieve a node key position
