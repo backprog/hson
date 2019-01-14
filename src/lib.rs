@@ -3,8 +3,6 @@
 
 extern crate uuid;
 
-use std::fs::File;
-use std::io::prelude::*;
 use std::collections::HashMap;
 use std::vec::Vec;
 use std::iter::FromIterator;
@@ -24,8 +22,8 @@ const COMMA: char = ',';
 
 
 /// Node types
-#[derive(PartialEq, Debug)]
-enum Kind {
+#[derive(PartialEq, Clone, Debug)]
+pub enum Kind {
     Node,
     Array,
     Integer,
@@ -35,18 +33,18 @@ enum Kind {
 }
 
 /// Hson node
-#[derive(Debug)]
-struct Node {
-    root: bool,
-    kind: Kind,
-    parent: String,
-    childs: Vec<String>,
-    key: [usize; 2],
-    value: [usize; 2],
-    id: String,
-    opened: bool,
-    json: bool,
-    instance: u32
+#[derive(Clone, Debug)]
+pub struct Node {
+    pub root: bool,
+    pub kind: Kind,
+    pub parent: String,
+    pub childs: Vec<String>,
+    pub key: [usize; 2],
+    pub value: [usize; 2],
+    pub id: String,
+    pub opened: bool,
+    pub json: bool,
+    pub instance: u32
 }
 
 /// Controls chars
@@ -60,8 +58,8 @@ struct Controls {
 /// Hson format
 pub struct Hson {
     data: Vec<char>,
-    nodes: HashMap<String, Node>,
-    indexes: Vec<String>,
+    pub nodes: HashMap<String, Node>,
+    pub indexes: Vec<String>,
     instances: u32,
     controls: Controls,
     process_start: Instant,
@@ -206,21 +204,21 @@ impl Hson {
                         }
                     }
 
-                    // Closing controls. Get previous opened node and close it
-                    else if c == CLOSE_CURLY || c == CLOSE_ARR || (c == DOUBLE_QUOTES && string_just_closed && !before_colons && previous != '\\') {
-                        let prev_node_uid = self.get_previous_node(i, &c)?;
+                        // Closing controls. Get previous opened node and close it
+                        else if c == CLOSE_CURLY || c == CLOSE_ARR || (c == DOUBLE_QUOTES && string_just_closed && !before_colons && previous != '\\') {
+                            let prev_node_uid = self.get_previous_node(i, &c)?;
 
-                        match self.nodes.get_mut(&prev_node_uid) {
-                            Some(n) => {
-                                n.opened = false;
-                                n.value = [n.value[0], i];
-                            },
-                            None => {
-                                let e = Error::new(ErrorKind::Other, format!("Node cannot be closed at {}", i));
-                                return Err(e);
-                            }
-                        };
-                    }
+                            match self.nodes.get_mut(&prev_node_uid) {
+                                Some(n) => {
+                                    n.opened = false;
+                                    n.value = [n.value[0], i];
+                                },
+                                None => {
+                                    let e = Error::new(ErrorKind::Other, format!("Node cannot be closed at {}", i));
+                                    return Err(e);
+                                }
+                            };
+                        }
                 },
                 None => {
                     if !in_string && before_colons {
@@ -417,25 +415,25 @@ impl Hson {
             self.controls.curly_brackets += 1;
         }
 
-        else if c == &CLOSE_CURLY {
-            self.controls.curly_brackets -= 1;
-        }
-
-        else if c == &DOUBLE_QUOTES {
-            if self.controls.double_quotes > 0 && previous != &'\\' {
-                self.controls.double_quotes = 0;
-            } else {
-                self.controls.double_quotes = 1;
+            else if c == &CLOSE_CURLY {
+                self.controls.curly_brackets -= 1;
             }
-        }
 
-        else if c == &OPEN_ARR {
-            self.controls.square_brackets += 1;
-        }
+                else if c == &DOUBLE_QUOTES {
+                    if self.controls.double_quotes > 0 && previous != &'\\' {
+                        self.controls.double_quotes = 0;
+                    } else {
+                        self.controls.double_quotes = 1;
+                    }
+                }
 
-        else if c == &CLOSE_ARR {
-            self.controls.square_brackets -= 1;
-        }
+                    else if c == &OPEN_ARR {
+                        self.controls.square_brackets += 1;
+                    }
+
+                        else if c == &CLOSE_ARR {
+                            self.controls.square_brackets -= 1;
+                        }
     }
 
     fn fill_iterator (&mut self) {
@@ -477,7 +475,7 @@ impl Hson {
 }
 
 
-trait Query {
+pub trait Query {
     fn query (&self, q: &str) -> Result<Vec<String>, Error>;
 
     fn query_nodes (&self, q: &str) -> Result<Vec<&Node>, Error>;
@@ -611,7 +609,7 @@ impl Query for Hson {
 }
 
 
-trait Ops {
+pub trait Ops {
     fn insert (&mut self, uid: &String, idx: usize, s: &str) -> Result<(), Error>;
 
     fn remove (&mut self, uid: &String) -> Result<(), Error>;
@@ -681,15 +679,17 @@ impl Ops for Hson {
                     start_idx = child.value[1] + 2;
                 }
 
-                // Insert a comma if the inserting position is not the last one and there's not already one
-                // When inserting in the middle of childs add the comma and push the position of all following nodes
-                if idx < node.childs.len() && t[t.len() - 2] != COMMA {
-                    t.insert(t.len() - 1, ',');
-                } else if idx >= node.childs.len() {
-                    let last_child_uid = node.childs[node.childs.len() - 1].clone();
-                    let current_uid = node.id.clone();
-                    self.insert_comma(last_child_uid, current_uid);
-                    start_idx += 1;
+                if node.childs.len() > 0 {
+                    // Insert a comma if the inserting position is not the last one and there's not already one
+                    // When inserting in the middle of childs add the comma and push the position of all following nodes
+                    if idx < node.childs.len() && t[t.len() - 2] != COMMA {
+                        t.insert(t.len() - 1, ',');
+                    } else if idx >= node.childs.len() {
+                        let last_child_uid = node.childs[node.childs.len() - 1].clone();
+                        let current_uid = node.id.clone();
+                        self.insert_comma(last_child_uid, current_uid);
+                        start_idx += 1;
+                    }
                 }
 
                 // Parsing the new slice occurs only here to allow borrowing as there's no more use of the node variable
@@ -996,7 +996,7 @@ impl Ops for Hson {
 }
 
 
-trait Debug {
+pub trait Debug {
     fn print_nodes (&self, sorted: bool);
 
     fn print_data (&mut self, pretty: bool);
@@ -1128,107 +1128,4 @@ impl Iterator for Hson {
             None
         }
     }
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn can_parse () {
-        let mut data = String::new();
-        let mut file = File::open("samples/small.hson").unwrap();
-        file.read_to_string(&mut data).unwrap();
-
-        let mut hson = Hson::new();
-        assert_eq!(hson.parse(&data).unwrap(), ());
-    }
-}
-
-
-fn main() {
-    let mut data = String::new();
-    let mut file = File::open("samples/small.hson").unwrap();
-    file.read_to_string(&mut data).unwrap();
-
-    let mut hson = Hson::new();
-    hson.parse(&data).unwrap();
-
-//    loop {
-//        let id = match hson.next() {
-//            Some(s) => s,
-//            None => break
-//        };
-//
-//        match &hson.nodes.get(&id) {
-//            Some(node) => {
-//                println ! ("{} : {}", node.instance, node.id);
-//            }
-//            None => {
-//                break
-//            }
-//        }
-//    }
-
-//    hson.print_process_time();
-
-//    print!("ON PARSE\n");
-//    hson.print_indexes();
-//    hson.print_nodes(true);
-//    hson.print_data(true);
-//    hson.print_controls();
-//    print!("\n\n");
-
-    let results = hson.query("div p").unwrap();
-//    println!("\n{:?}\n", results);
-
-    let child = r#"{
-                        "i": {
-                            "class": [],
-                            "text": "World"
-                        },
-                        "ul": {
-                            "class": ["active","test"]
-                        }
-                    }"#;
-
-    hson.insert(&results[0], 2, child).unwrap();
-//
-//    print!("ON INSERT\n");
-
-//    loop {
-//        let id = match hson.next() {
-//            Some(s) => s,
-//            None => break
-//        };
-//
-//        match &hson.nodes.get(&id) {
-//            Some(node) => {
-//                println ! ("{} : {}", node.instance, node.id);
-//            }
-//            None => {
-//                break
-//            }
-//        }
-//    }
-
-//    hson.print_indexes();
-    hson.print_nodes(true);
-    hson.print_data(true);
-//    print!("\n\n");
-//
-//    let results = hson.query("p").unwrap();
-//    println!("\n{:?}\n", results);
-//    print!("\n\n");
-//
-//    hson.remove(&results[0]).unwrap();
-//
-//    print!("ON REMOVE\n");
-//    hson.print_nodes(true);
-//    hson.print_data(true);
-
-//    for id in hson {
-//        println!("{}", id);
-//    }
 }
