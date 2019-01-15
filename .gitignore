@@ -4,3 +4,4 @@
 .idea
 src/main.rs
 Cargo.lock
+.DS_Store

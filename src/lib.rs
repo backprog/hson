@@ -12,6 +12,8 @@ use std::time::{ Instant };
 use uuid::Uuid;
 
 
+type Callback = fn(Event, String);
+
 const OPEN_CURLY: char = '{';
 const CLOSE_CURLY: char = '}';
 const OPEN_ARR: char = '[';
@@ -20,6 +22,13 @@ const DOUBLE_QUOTES: char = '"';
 const COLONS: char = ':';
 const COMMA: char = ',';
 
+/// Events types
+#[derive(PartialEq, Clone, Debug)]
+pub enum Event {
+    Parse,
+    Insert,
+    Remove
+}
 
 /// Node types
 #[derive(PartialEq, Clone, Debug)]
@@ -63,7 +72,8 @@ pub struct Hson {
     instances: u32,
     controls: Controls,
     process_start: Instant,
-    vec_it: Vec<String>
+    vec_it: Vec<String>,
+    callback: Option<Callback>
 }
 
 impl Hson {
@@ -81,7 +91,8 @@ impl Hson {
                 double_quotes: 0
             },
             process_start: Instant::now(),
-            vec_it: Vec::new()
+            vec_it: Vec::new(),
+            callback: None
         };
 
         hson
@@ -101,7 +112,8 @@ impl Hson {
                 double_quotes: 0
             },
             process_start: Instant::now(),
-            vec_it: Vec::new()
+            vec_it: Vec::new(),
+            callback: None
         };
 
         hson
@@ -115,6 +127,7 @@ impl Hson {
         let mut string_just_closed = false;
         let mut l = data.len();
         let mut i = 0;
+        let mut root_uid = String::from("");
 
         loop {
             let c = data[i];
@@ -167,6 +180,10 @@ impl Hson {
                         let value = if i == 0 { [i, data.len()] } else { [i + 1, data.len()] };
                         let mut kind = if i == 0 { Kind::Node } else { self.get_node_kind(i, &data)? };
                         let mut json = false;
+
+                        if root {
+                            root_uid = uid.clone();
+                        }
 
                         // If kind is json, remove json tag, switch back to String kind and mark the node as json
                         // Note: Add support for other tag formats
@@ -240,7 +257,14 @@ impl Hson {
         self.data = data;
         self.fill_iterator();
 
-        self.validate()
+        self.validate()?;
+
+        match self.callback {
+            Some(c) => c(Event::Parse, root_uid),
+            None => {}
+        }
+
+        Ok(())
     }
 
     /// Retrieve a node key
@@ -267,6 +291,11 @@ impl Hson {
         }
 
         value
+    }
+
+    /// Subscribe to events
+    pub fn subscribe (&mut self, c: Callback) {
+        self.callback = Some(c);
     }
 
     /// Remove format tags
@@ -744,6 +773,11 @@ impl Ops for Hson {
 
         self.fill_iterator();
 
+        match self.callback {
+            Some(c) => c(Event::Insert, uid.clone()),
+            None => {}
+        }
+
         Ok(())
     }
 
@@ -775,6 +809,11 @@ impl Ops for Hson {
         }
 
         self.fill_iterator();
+
+        match self.callback {
+            Some(c) => c(Event::Remove, uid.clone()),
+            None => {}
+        }
 
         Ok(())
     }
