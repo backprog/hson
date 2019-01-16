@@ -267,6 +267,29 @@ impl Hson {
         Ok(())
     }
 
+    /// Stringify and return the hson
+    pub fn stringify (&self) -> String {
+        let s: String = self.data.iter().collect();
+
+        s
+    }
+
+    /// Retrieve root node id
+    pub fn get_root (&mut self) -> String {
+        if self.vec_it.len() == 0 {
+            self.fill_iterator();
+        }
+
+        let uid = self.vec_it[0].clone();
+        uid
+    }
+
+    /// Same as `get_root` but return the node itself
+    pub fn get_root_node (&mut self) -> Option<&Node> {
+        let uid = self.get_root();
+        self.nodes.get(&uid)
+    }
+
     /// Retrieve a node key
     pub fn get_node_key (&self, n: &Node) -> String {
         let mut key = String::from("");
@@ -519,11 +542,11 @@ impl Hson {
 
 
 pub trait Query {
-    fn query (&self, q: &str) -> Result<Vec<String>, Error>;
+    fn query (&mut self, q: &str) -> Result<Vec<String>, Error>;
 
-    fn query_nodes (&self, q: &str) -> Result<Vec<&Node>, Error>;
+    fn query_nodes (&mut self, q: &str) -> Result<Vec<&Node>, Error>;
 
-    fn find (&self, elements: &Vec<String>, query: Vec<&str>, first: bool) -> Result<Vec<String>, Error>;
+    fn retrieve (&self, elements: &Vec<String>, query: Vec<&str>, first: bool) -> Result<Vec<String>, Error>;
 
     fn get_all_childs (&self, s: &String) -> Result<Vec<String>, Error>;
 
@@ -532,14 +555,15 @@ pub trait Query {
 
 impl Query for Hson {
     /// Public method to query the data
-    fn query (&self, q: &str) -> Result<Vec<String>, Error> {
+    fn query (&mut self, q: &str) -> Result<Vec<String>, Error> {
         let mut results = Vec::new();
         let mut set = Vec::new();
         let parts: Vec<&str> = q.split(" ").collect();
+        let root_id = self.get_root();
 
-        set.push(self.indexes[0].clone());
+        set.push(root_id);
 
-        let ids = self.find(&set, parts, true)?;
+        let ids = self.retrieve(&set, parts, true)?;
         for uid in &ids {
             results.push(uid.clone());
         }
@@ -548,14 +572,15 @@ impl Query for Hson {
     }
 
     /// Same as query but return nodes structures instead of their ids
-    fn query_nodes (&self, q: &str) -> Result<Vec<&Node>, Error> {
+    fn query_nodes (&mut self, q: &str) -> Result<Vec<&Node>, Error> {
         let mut results = Vec::new();
         let mut set = Vec::new();
         let parts: Vec<&str> = q.split(" ").collect();
+        let root_id = self.get_root();
 
-        set.push(self.indexes[0].clone());
+        set.push(root_id);
 
-        let ids = self.find(&set, parts, true)?;
+        let ids = self.retrieve(&set, parts, true)?;
         for uid in &ids {
             results.push(&self.nodes[uid]);
         }
@@ -564,7 +589,7 @@ impl Query for Hson {
     }
 
     /// Recursive method looking for nodes matching the query
-    fn find (&self, elements: &Vec<String>, mut query: Vec<&str>, first: bool) -> Result<Vec<String>, Error> {
+    fn retrieve (&self, elements: &Vec<String>, mut query: Vec<&str>, first: bool) -> Result<Vec<String>, Error> {
         let mut results = Vec::new();
 
         if query.len() > 0 {
@@ -591,7 +616,7 @@ impl Query for Hson {
                             }
                         }
 
-                        let mut res = self.find(&n.childs, q, false)?;
+                        let mut res = self.retrieve(&n.childs, q, false)?;
                         results.append(&mut res);
                     },
                     None => {
@@ -741,7 +766,8 @@ impl Ops for Hson {
                 let mut hson = Hson::new_slice(start_instance);
                 hson.parse(s)?;
 
-                match hson.nodes.get(&hson.indexes[0]) {
+                let root_id = hson.get_root();
+                match hson.nodes.get(&root_id) {
                     Some(n) => {
                         slice_range = n.value[1] - n.value[0];
                     },
@@ -886,8 +912,9 @@ impl Ops for Hson {
     fn right_push_instances (&mut self, start: u32, distance: u32, data_size: usize) -> Result<(), Error> {
         let l = self.indexes.len();
         let mut i = 0;
+        let root_id = self.get_root();
 
-        match self.nodes.get_mut(&self.indexes[0]) {
+        match self.nodes.get_mut(&root_id) {
             Some(node) => node.value[1] += data_size,
             None => {}
         }
@@ -969,8 +996,9 @@ impl Ops for Hson {
     fn left_push_instances (&mut self, start: u32, distance: u32, data_size: usize) -> Result<(), Error> {
         let l = self.indexes.len();
         let mut i = 0;
+        let root_id = self.get_root();
 
-        match self.nodes.get_mut(&self.indexes[0]) {
+        match self.nodes.get_mut(&root_id) {
             Some(node) => node.value[1] -= data_size,
             None => {}
         }
