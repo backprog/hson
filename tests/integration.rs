@@ -54,7 +54,7 @@ fn has_nodes_number () {
     let mut hson = Hson::new();
     hson.parse(&SHORT_DATA).unwrap();
 
-    assert_eq!(hson.indexes.len(), 16);
+    assert_eq!(hson.indexes.len(), 18);
 }
 
 #[test]
@@ -84,6 +84,17 @@ fn query_retrieve_elements () {
 }
 
 #[test]
+fn query_retrieve_in_node () {
+    let mut hson = Hson::new();
+    hson.parse(&SHORT_DATA).unwrap();
+
+    let results = hson.query("div p").unwrap();
+    let childs_results = hson.query_on(&results[0], "span").unwrap();
+
+    assert_eq!(childs_results.len(), 1);
+}
+
+#[test]
 fn insertion () {
     let mut hson = Hson::new();
     hson.parse(&SHORT_DATA).unwrap();
@@ -97,8 +108,8 @@ fn insertion () {
                     }"#;
 
     assert_eq!(hson.insert(&results[0], 0, child).unwrap(), ());
-    assert_eq!(hson.indexes.len(), 18);
-    assert_eq!(hson.nodes.keys().len(), 18);
+    assert_eq!(hson.indexes.len(), 20);
+    assert_eq!(hson.nodes.keys().len(), 20);
 }
 
 #[test]
@@ -110,6 +121,6 @@ fn deletion () {
     assert_eq!(results.len(), 2);
 
     assert_eq!(hson.remove(&results[0]).unwrap(), ());
-    assert_eq!(hson.indexes.len(), 12);
-    assert_eq!(hson.nodes.keys().len(), 12);
+    assert_eq!(hson.indexes.len(), 14);
+    assert_eq!(hson.nodes.keys().len(), 14);
 }

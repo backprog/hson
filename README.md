@@ -75,6 +75,14 @@ println!("\n{:?}\n", results);
 let results = hson.query_nodes("div p").unwrap();
 println!("\n{:?}\n", results);
   
+// Recursive search in a node
+let results = hson.query_on(&uid, "div p").unwrap();
+println!("\n{:?}\n", results);
+  
+// Recursive search in a node and get node's reference
+let results = hson.query_on_nodes(&node, "div p").unwrap();
+println!("\n{:?}\n", results);
+  
 // Get node key
 let key = hson.get_node_key(&node);
   

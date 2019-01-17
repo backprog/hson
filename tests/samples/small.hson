@@ -12,7 +12,11 @@
           "text": "Hello"
         }
       },
-      "p": {}
+      "p": {
+        "span": {
+          "text": "World"
+        }
+      }
     },
     "div": {
       "component": "test",

@@ -546,6 +546,10 @@ pub trait Query {
 
     fn query_nodes (&mut self, q: &str) -> Result<Vec<&Node>, Error>;
 
+    fn query_on (&mut self, node_id: &str, q: &str) -> Result<Vec<String>, Error>;
+
+    fn query_on_nodes (&mut self, node: &Node, q: &str) -> Result<Vec<&Node>, Error>;
+
     fn retrieve (&self, elements: &Vec<String>, query: Vec<&str>, first: bool) -> Result<Vec<String>, Error>;
 
     fn get_all_childs (&self, s: &String) -> Result<Vec<String>, Error>;
@@ -571,7 +575,7 @@ impl Query for Hson {
         Ok(results)
     }
 
-    /// Same as query but return nodes structures instead of their ids
+    /// Same as `query` but return nodes structures instead of their ids
     fn query_nodes (&mut self, q: &str) -> Result<Vec<&Node>, Error> {
         let mut results = Vec::new();
         let mut set = Vec::new();
@@ -579,6 +583,38 @@ impl Query for Hson {
         let root_id = self.get_root();
 
         set.push(root_id);
+
+        let ids = self.retrieve(&set, parts, true)?;
+        for uid in &ids {
+            results.push(&self.nodes[uid]);
+        }
+
+        Ok(results)
+    }
+
+    /// Same as `query` but constrain the search in the provided node's childs only
+    fn query_on (&mut self, node_id: &str, q: &str) -> Result<Vec<String>, Error> {
+        let mut results = Vec::new();
+        let mut set = Vec::new();
+        let parts: Vec<&str> = q.split(" ").collect();
+
+        set.push(node_id.to_string());
+
+        let ids = self.retrieve(&set, parts, true)?;
+        for uid in &ids {
+            results.push(uid.clone());
+        }
+
+        Ok(results)
+    }
+
+    /// Same as `query_on` but return nodes structures instead of their ids
+    fn query_on_nodes (&mut self, node: &Node, q: &str) -> Result<Vec<&Node>, Error> {
+        let mut results = Vec::new();
+        let mut set = Vec::new();
+        let parts: Vec<&str> = q.split(" ").collect();
+
+        set.push(node.id.clone());
 
         let ids = self.retrieve(&set, parts, true)?;
         for uid in &ids {
