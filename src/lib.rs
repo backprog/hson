@@ -546,9 +546,9 @@ pub trait Query {
 
     fn query_nodes (&mut self, q: &str) -> Result<Vec<&Node>, Error>;
 
-    fn query_on (&mut self, node_id: &str, q: &str) -> Result<Vec<String>, Error>;
+    fn query_on (&mut self, node_id: &str, q: &str, recursive: bool) -> Result<Vec<String>, Error>;
 
-    fn query_on_nodes (&mut self, node: &Node, q: &str) -> Result<Vec<&Node>, Error>;
+    fn query_on_nodes (&mut self, node: &Node, q: &str, recursive: bool) -> Result<Vec<&Node>, Error>;
 
     fn retrieve (&self, elements: &Vec<String>, query: Vec<&str>, first: bool) -> Result<Vec<String>, Error>;
 
@@ -593,7 +593,7 @@ impl Query for Hson {
     }
 
     /// Same as `query` but constrain the search in the provided node's childs only
-    fn query_on (&mut self, node_id: &str, q: &str) -> Result<Vec<String>, Error> {
+    fn query_on (&mut self, node_id: &str, q: &str, recursive: bool) -> Result<Vec<String>, Error> {
         let mut results = Vec::new();
         let mut set = Vec::new();
         let parts: Vec<&str> = q.split(" ").collect();
@@ -602,14 +602,25 @@ impl Query for Hson {
 
         let ids = self.retrieve(&set, parts, true)?;
         for uid in &ids {
-            results.push(uid.clone());
+            if recursive {
+                results.push(uid.clone());
+            } else {
+                match self.nodes.get(uid) {
+                    Some(n) => {
+                        if n.parent == node_id {
+                            results.push(uid.clone());
+                        }
+                    },
+                    None => {}
+                }
+            }
         }
 
         Ok(results)
     }
 
     /// Same as `query_on` but return nodes structures instead of their ids
-    fn query_on_nodes (&mut self, node: &Node, q: &str) -> Result<Vec<&Node>, Error> {
+    fn query_on_nodes (&mut self, node: &Node, q: &str, recursive: bool) -> Result<Vec<&Node>, Error> {
         let mut results = Vec::new();
         let mut set = Vec::new();
         let parts: Vec<&str> = q.split(" ").collect();
@@ -618,7 +629,18 @@ impl Query for Hson {
 
         let ids = self.retrieve(&set, parts, true)?;
         for uid in &ids {
-            results.push(&self.nodes[uid]);
+            if recursive {
+                results.push(&self.nodes[uid]);
+            } else {
+                match self.nodes.get(uid) {
+                    Some(n) => {
+                        if n.parent == node.id {
+                            results.push(&self.nodes[uid]);
+                        }
+                    },
+                    None => {}
+                }
+            }
         }
 
         Ok(results)

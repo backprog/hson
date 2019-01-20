@@ -89,7 +89,18 @@ fn query_retrieve_in_node () {
     hson.parse(&SHORT_DATA).unwrap();
 
     let results = hson.query("div p").unwrap();
-    let childs_results = hson.query_on(&results[0], "span").unwrap();
+    let childs_results = hson.query_on(&results[0], "span", true).unwrap();
+
+    assert_eq!(childs_results.len(), 1);
+}
+
+#[test]
+fn query_retrieve_in_node_only () {
+    let mut hson = Hson::new();
+    hson.parse(&SHORT_DATA).unwrap();
+
+    let results = hson.query("div").unwrap();
+    let childs_results = hson.query_on(&results[0], "attrs", false).unwrap();
 
     assert_eq!(childs_results.len(), 1);
 }
