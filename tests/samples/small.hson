@@ -1,13 +1,17 @@
 {
   "div": {
     "attrs": {
-      "class": [""],
+      "class": ["active", 123, 0.25864, "test"],
       "onClick": "doSomething",
       "rel": <json>"{\"div\":[[\"abc\"],[\"cde\",\"fgh\"]]}"
     },
     "div": {
       "p": {
-        "attrs": {},
+        "attrs": {
+          "id": 12,
+          "rate": 0.4321,
+          "trusted": true
+        },
         "span": {
           "text": "Hello"
         }

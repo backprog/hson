@@ -54,7 +54,7 @@ fn has_nodes_number () {
     let mut hson = Hson::new();
     hson.parse(&SHORT_DATA).unwrap();
 
-    assert_eq!(hson.indexes.len(), 18);
+    assert_eq!(hson.indexes.len(), 21);
 }
 
 #[test]
@@ -119,8 +119,8 @@ fn insertion () {
                     }"#;
 
     assert_eq!(hson.insert(&results[0], 0, child).unwrap(), ());
-    assert_eq!(hson.indexes.len(), 20);
-    assert_eq!(hson.nodes.keys().len(), 20);
+    assert_eq!(hson.indexes.len(), 23);
+    assert_eq!(hson.nodes.keys().len(), 23);
 }
 
 #[test]

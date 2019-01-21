@@ -38,6 +38,7 @@ pub enum Kind {
     Integer,
     Float,
     String,
+    Bool,
     Json
 }
 
@@ -54,6 +55,19 @@ pub struct Node {
     pub opened: bool,
     pub json: bool,
     pub instance: u32
+}
+
+/// Hson cloned node
+#[derive(Clone, Debug)]
+pub struct Vertex {
+    pub root: bool,
+    pub kind: Kind,
+    pub parent: String,
+    pub childs: Vec<String>,
+    pub id: String,
+    pub instance: u32,
+    pub key: String,
+    pub value: String
 }
 
 /// Controls chars
@@ -175,10 +189,18 @@ impl Hson {
 
                         let uid = Uuid::new_v4().to_string();
                         let root = i == 0;
-                        let parent = if i == 0 { String::from("") } else { self.get_previous_opened_node(self.indexes.len())? };
+                        let parent = if i == 0 { String::from("") } else { self.get_previous_opened_node(self.indexes.len(), true)? };
                         let key = if i == 0 { [0, 0] } else { self.get_node_key_position(i, &data)? };
-                        let value = if i == 0 { [i, data.len()] } else { [i + 1, data.len()] };
                         let mut kind = if i == 0 { Kind::Node } else { self.get_node_kind(i, &data)? };
+                        let value = if i == 0 { [i, data.len()] } else {
+                            match &kind {
+                                &Kind::Bool |
+                                &Kind::Integer |
+                                &Kind::Float => [i, data.len()],
+                                _ => [i + 1, data.len()]
+                            }
+
+                        };
                         let mut json = false;
 
                         if root {
@@ -211,7 +233,7 @@ impl Hson {
 
                         if i > 0 {
                             // Get previous opened node and insert current node as one of its childs
-                            let prev_node_uid = self.get_previous_opened_node(self.nodes.len() - 1)?;
+                            let prev_node_uid = self.get_previous_opened_node(self.nodes.len() - 1, true)?;
                             match self.nodes.get_mut(&prev_node_uid) {
                                 Some(n) => n.childs.push(uid),
                                 None => {
@@ -222,9 +244,39 @@ impl Hson {
                         }
                     }
 
-                        // Closing controls. Get previous opened node and close it
-                        else if c == CLOSE_CURLY || c == CLOSE_ARR || (c == DOUBLE_QUOTES && string_just_closed && !before_colons && previous != '\\') {
-                            let prev_node_uid = self.get_previous_node(i, &c)?;
+                    // Closing controls. Get previous opened node and close it
+                    else if c == CLOSE_CURLY || c == CLOSE_ARR || (c == DOUBLE_QUOTES && string_just_closed && !before_colons && previous != '\\') {
+                        if c == CLOSE_CURLY {
+                            match &previous {
+                                &CLOSE_CURLY |
+                                &CLOSE_ARR |
+                                &OPEN_CURLY |
+                                &COMMA |
+                                &DOUBLE_QUOTES => {},
+                                _ => {
+                                    self.close_previous_node(self.nodes.len(), i)?;
+                                }
+                            }
+                        }
+
+                        let prev_node_uid = self.get_previous_node(i, &c)?;
+
+                        match self.nodes.get_mut(&prev_node_uid) {
+                            Some(n) => {
+                                n.opened = false;
+                                n.value = [n.value[0], i];
+                            },
+                            None => {
+                                let e = Error::new(ErrorKind::Other, format!("Node cannot be closed at {}", i));
+                                return Err(e);
+                            }
+                        };
+                    }
+
+                    // Line ending control. Get previous opened node and close it
+                    else if c == COMMA && !in_string && !in_array {
+                        if previous != CLOSE_CURLY && previous != CLOSE_ARR && previous != DOUBLE_QUOTES {
+                            let prev_node_uid = self.get_previous_opened_node(self.nodes.len(), false)?;
 
                             match self.nodes.get_mut(&prev_node_uid) {
                                 Some(n) => {
@@ -237,9 +289,10 @@ impl Hson {
                                 }
                             };
                         }
+                    }
                 },
                 None => {
-                    if !in_string && before_colons {
+                    if !in_array && !in_string && before_colons {
                         let e = Error::new(ErrorKind::InvalidData, format!("Invalid character {} at {}", c, i));
                         return Err(e);
                     }
@@ -321,6 +374,28 @@ impl Hson {
         self.callback = Some(c);
     }
 
+    /// Get node clone with its key and value
+    pub fn get_vertex (&self, node_id: &str) -> Option<Vertex> {
+        match self.nodes.get(node_id) {
+            Some(node) => {
+                let key = self.get_node_key(&node);
+                let value = self.get_node_value(&node);
+
+                Some(Vertex {
+                    root: node.root,
+                    kind: node.kind.clone(),
+                    parent: node.parent.clone(),
+                    childs: node.childs.clone(),
+                    id: node.id.clone(),
+                    instance: node.instance,
+                    key,
+                    value
+                })
+            },
+            None => None
+        }
+    }
+
     /// Remove format tags
     fn remove_type (&self, pos: usize, data: &mut Vec<char>, kind: &str) -> usize {
         if kind == "json" {
@@ -374,13 +449,16 @@ impl Hson {
                     n += 1;
                     match self.controls.chars.iter().position(|&s| s == data[n]) {
                         Some(_) => {
-                            let v: String = Vec::from_iter(data[i+1..n-1].iter().cloned()).into_iter().collect();
+                            let v: String = Vec::from_iter(data[i+1..n].iter().cloned()).into_iter().collect();
 
                             if v.parse::<i64>().is_ok() {
                                 k = Kind::Integer;
                                 break;
                             } else if v.parse::<f64>().is_ok() {
                                 k = Kind::Float;
+                                break;
+                            } else if v == "true" || v == "false" {
+                                k = Kind::Bool;
                                 break;
                             } else {
                                 let e = Error::new(ErrorKind::InvalidData, format!("Invalid value {} at {}", v, i));
@@ -437,8 +515,8 @@ impl Hson {
         Ok(prev_node_uid.to_string())
     }
 
-    /// Same as `get_previous_node` but does not check the node kind
-    fn get_previous_opened_node (&self, i: usize) -> Result<String, Error> {
+    /// Retrieve the previous opened node from the provided node position
+    fn get_previous_opened_node (&self, i: usize, skip: bool) -> Result<String, Error> {
         let nodes = &self.nodes;
         let mut prev_node_uid = "";
         let mut l = i;
@@ -452,8 +530,20 @@ impl Hson {
             match nodes.get(&self.indexes[l]) {
                 Some(n) => {
                     if n.opened {
-                        prev_node_uid = &n.id;
-                        break;
+                        if skip {
+                            match n.kind {
+                                Kind::Float |
+                                Kind::Integer |
+                                Kind::Bool => { continue },
+                                _ => {
+                                    prev_node_uid = &n.id;
+                                    break;
+                                }
+                            }
+                        } else {
+                            prev_node_uid = &n.id;
+                            break;
+                        }
                     }
                 },
                 None => {}
@@ -461,6 +551,31 @@ impl Hson {
         }
 
         Ok(prev_node_uid.to_string())
+    }
+
+    /// Close previous opened node
+    fn close_previous_node (&mut self, i: usize, pos: usize) -> Result<(), Error> {
+        let mut l = i;
+
+        loop {
+            l = if l > 0 { l - 1 } else {
+                let e = Error::new(ErrorKind::Other, format!("Cannot retrieve previous opened node"));
+                return Err(e);
+            };
+
+            match self.nodes.get_mut(&self.indexes[l]) {
+                Some(n) => {
+                    if n.opened {
+                        n.opened = false;
+                        n.value = [n.value[0], pos];
+                        break;
+                    }
+                },
+                None => {}
+            };
+        }
+
+        Ok(())
     }
 
     /// Clean a string of tab/newlines/spaces
@@ -1131,6 +1246,149 @@ impl Ops for Hson {
             },
             None => {}
         };
+    }
+}
+
+
+pub trait Cast {
+    fn value_as_string (&self) -> Option<String>;
+
+    fn value_as_f64 (&self) -> Option<f64>;
+
+    fn value_as_i64 (&self) -> Option<i64>;
+
+    fn value_as_u64 (&self) -> Option<u64>;
+
+    fn value_as_bool (&self) -> Option<bool>;
+
+    fn value_as_array (&self) -> Option<Vec<String>>;
+
+    fn as_f64 (&self, value: &str) -> Option<f64>;
+
+    fn as_i64 (&self, value: &str) -> Option<i64>;
+
+    fn as_u64 (&self, value: &str) -> Option<u64>;
+
+    fn as_bool (&self, value: &str) -> Option<bool>;
+}
+
+impl Cast for Vertex {
+    fn value_as_string (&self) -> Option<String> {
+        let v = self.value.clone();
+        Some(v)
+    }
+
+    fn value_as_f64 (&self) -> Option<f64> {
+        let v = self.value.parse::<f64>();
+
+        if v.is_ok() {
+            Some(v.unwrap())
+        } else {
+            None
+        }
+    }
+
+    fn value_as_i64 (&self) -> Option<i64> {
+        let v = self.value.parse::<i64>();
+
+        if v.is_ok() {
+            Some(v.unwrap())
+        } else {
+            None
+        }
+    }
+
+    fn value_as_u64 (&self) -> Option<u64> {
+        let v = self.value.parse::<u64>();
+
+        if v.is_ok() {
+            Some(v.unwrap())
+        } else {
+            None
+        }
+    }
+
+    fn value_as_bool (&self) -> Option<bool> {
+        let v = match self.value.as_ref() {
+            "true" => Some(true),
+            "false" => Some(false),
+            _ => None
+        };
+
+        v
+    }
+
+    fn value_as_array (&self) -> Option<Vec<String>> {
+        let chars: Vec<char> = self.value.chars().collect();
+        let mut values: Vec<String> = Vec::new();
+        let mut in_string = false;
+        let mut previous = &' ';
+        let mut item = String::from("");
+
+        for c in &chars {
+            if c == &'"' {
+                if !in_string {
+                    in_string = true;
+                } else {
+                    if previous != &'\\' {
+                        in_string = false;
+                    }
+                }
+            } else if c == &',' && !in_string {
+                values.push(item);
+                item = String::from("");
+            } else {
+                item.push_str(&c.to_string());
+            }
+
+            previous = c;
+        }
+
+        if !item.is_empty() {
+            values.push(item);
+        }
+
+        Some(values)
+    }
+
+    fn as_f64 (&self, value: &str) -> Option<f64> {
+        let v = value.parse::<f64>();
+
+        if v.is_ok() {
+            Some(v.unwrap())
+        } else {
+            None
+        }
+    }
+
+    fn as_i64 (&self, value: &str) -> Option<i64> {
+        let v = value.parse::<i64>();
+
+        if v.is_ok() {
+            Some(v.unwrap())
+        } else {
+            None
+        }
+    }
+
+    fn as_u64 (&self, value: &str) -> Option<u64> {
+        let v = value.parse::<u64>();
+
+        if v.is_ok() {
+            Some(v.unwrap())
+        } else {
+            None
+        }
+    }
+
+    fn as_bool (&self, value: &str) -> Option<bool> {
+        let v = match value {
+            "true" => Some(true),
+            "false" => Some(false),
+            _ => None
+        };
+
+        v
     }
 }
 
