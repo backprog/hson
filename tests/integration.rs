@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::prelude::*;
 
 extern crate hson;
-use hson::{ Hson, Query, Ops };
+use hson::{ Hson, Query, Ops, Cast };
 
 
 lazy_static! {
@@ -134,4 +134,42 @@ fn deletion () {
     assert_eq!(hson.remove(&results[0]).unwrap(), ());
     assert_eq!(hson.indexes.len(), 14);
     assert_eq!(hson.nodes.keys().len(), 14);
+}
+
+#[test]
+fn vertex () {
+    let mut hson = Hson::new();
+    hson.parse(&SHORT_DATA).unwrap();
+
+    let results = hson.query("div attrs class").unwrap();
+    let class = hson.get_vertex(&results[0]).unwrap();
+    let values = class.value_as_array().unwrap();
+
+    assert_eq!(values.len(), 4);
+    assert_eq!(values[0], "active");
+    assert_eq!(values[1], "123");
+    assert_eq!(values[2], "0.25864");
+    assert_eq!(values[3], "test");
+}
+
+#[test]
+fn vertex_cast () {
+    let mut hson = Hson::new();
+    hson.parse(&SHORT_DATA).unwrap();
+
+    let results = hson.query("div p attrs").unwrap();
+    let attributes = hson.query_on(&results[0], "id", false).unwrap();
+    let id = hson.get_vertex(&attributes[0]).unwrap();
+
+    assert_eq!(id.value_as_u64(), Some(12));
+
+    let attributes = hson.query_on(&results[0], "rate", false).unwrap();
+    let rate = hson.get_vertex(&attributes[0]).unwrap();
+
+    assert_eq!(rate.value_as_f64(), Some(0.4321));
+
+    let attributes = hson.query_on(&results[0], "trusted", false).unwrap();
+    let trusted = hson.get_vertex(&attributes[0]).unwrap();
+
+    assert_eq!(trusted.value_as_bool(), Some(true));
 }
