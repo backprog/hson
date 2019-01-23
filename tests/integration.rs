@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::prelude::*;
 
 extern crate hson;
-use hson::{ Hson, Query, Ops, Cast };
+use hson::{ Hson, Query, Ops, Search, Cast };
 
 
 lazy_static! {
@@ -103,6 +103,24 @@ fn query_retrieve_in_node_only () {
     let childs_results = hson.query_on(&results[0], "attrs", false).unwrap();
 
     assert_eq!(childs_results.len(), 1);
+}
+
+#[test]
+fn search () {
+    let mut hson = Hson::new();
+    hson.parse(&SHORT_DATA).unwrap();
+
+    let results = hson.search("div").unwrap();
+    assert_eq!(results.len(), 3);
+
+    let results = hson.search("div > p attrs id | rate | trusted").unwrap();
+    assert_eq!(results.len(), 3);
+
+    let results = hson.search("div > p attrs id = '12' | rate = '3' | trusted").unwrap();
+    assert_eq!(results.len(), 2);
+
+    let results = hson.search("div > attrs").unwrap();
+    assert_eq!(results.len(), 2);
 }
 
 #[test]

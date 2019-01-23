@@ -369,6 +369,73 @@ impl Hson {
         value
     }
 
+    /// Get all childs of a node recursively
+    pub fn get_all_childs (&self, s: &String) -> Result<Vec<String>, Error> {
+        match self.nodes.get(s) {
+            Some(node) => {
+                let mut results = Vec::new();
+
+                if node.childs.len() > 0 {
+                    results.append(&mut node.childs.clone());
+
+                    for uid in &node.childs {
+                        let mut res = self.get_all_childs(uid)?;
+                        results.append(&mut res);
+                    }
+                }
+
+                Ok(results)
+            },
+            None => {
+                let e = Error::new(ErrorKind::InvalidData, format!("Cannot find node uid {}", s));
+                return Err(e);
+            }
+        }
+    }
+
+    /// Same as `get_all_childs` but returning nodes structures instead of their ids
+    pub fn get_all_node_childs (&self, node: &Node) -> Result<Vec<&Node>, Error> {
+        let mut results = Vec::new();
+
+        if node.childs.len() > 0 {
+            for uid in &node.childs {
+                match self.nodes.get(uid) {
+                    Some(n) => {
+                        results.push(n);
+
+                        let mut res = self.get_all_node_childs(n)?;
+                        results.append(&mut res);
+                    },
+                    None => {}
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Is provided node a descendant of the provided parent
+    pub fn is_descendant (&self, parent: &str, child: &str) -> bool {
+        let mut current = child.to_string().clone();
+
+        loop {
+            match self.nodes.get(&current) {
+                Some(node) => {
+                    if node.parent == parent {
+                        return true
+                    } else {
+                        if node.root {
+                            return false
+                        }
+
+                        current = node.parent.clone();
+                    }
+                },
+                None => return false
+            }
+        }
+    }
+
     /// Subscribe to events
     pub fn subscribe (&mut self, c: Callback) {
         self.callback = Some(c);
@@ -396,6 +463,7 @@ impl Hson {
         }
     }
 
+    /* PRIVATE */
     /// Remove format tags
     fn remove_type (&self, pos: usize, data: &mut Vec<char>, kind: &str) -> usize {
         if kind == "json" {
@@ -573,445 +641,6 @@ impl Hson {
                 },
                 None => {}
             };
-        }
-
-        Ok(())
-    }
-
-    /// Clean a string of tab/newlines/spaces
-    fn clean (&self, s: &str) -> Vec<char> {
-        let mut string_array = Vec::new();
-
-        for (_i, c) in s.chars().enumerate() {
-            if c != ' ' && c != '\t' && c != '\r' && c != '\n' {
-                string_array.push(c);
-            }
-        }
-
-        string_array
-    }
-
-    fn controls_count (&mut self, c: &char, previous: &char) {
-        if c == &OPEN_CURLY {
-            self.controls.curly_brackets += 1;
-        }
-
-            else if c == &CLOSE_CURLY {
-                self.controls.curly_brackets -= 1;
-            }
-
-                else if c == &DOUBLE_QUOTES {
-                    if self.controls.double_quotes > 0 && previous != &'\\' {
-                        self.controls.double_quotes = 0;
-                    } else {
-                        self.controls.double_quotes = 1;
-                    }
-                }
-
-                    else if c == &OPEN_ARR {
-                        self.controls.square_brackets += 1;
-                    }
-
-                        else if c == &CLOSE_ARR {
-                            self.controls.square_brackets -= 1;
-                        }
-    }
-
-    fn fill_iterator (&mut self) {
-        self.vec_it.clear();
-        let mut previous_instance = self.instances - self.indexes.len() as u32;
-
-        loop {
-            for (key, _value) in &self.nodes {
-                let node = self.nodes.get(key).unwrap();
-
-                if node.instance == previous_instance + 1 {
-                    self.vec_it.push(node.id.clone());
-                    previous_instance += 1;
-                }
-            }
-
-            if previous_instance >= self.instances as u32 {
-                break;
-            }
-        }
-    }
-
-    fn validate (&self) -> Result<(), Error> {
-        for (_key, value) in &self.nodes {
-            if value.opened {
-                let mut key = self.get_node_key(value);
-
-                if key.is_empty() {
-                    key = String::from("root");
-                }
-
-                let e = Error::new(ErrorKind::InvalidData, format!("Invalid data at `{}`", key));
-                return Err(e);
-            }
-        }
-
-        Ok(())
-    }
-}
-
-
-pub trait Query {
-    fn query (&mut self, q: &str) -> Result<Vec<String>, Error>;
-
-    fn query_nodes (&mut self, q: &str) -> Result<Vec<&Node>, Error>;
-
-    fn query_on (&mut self, node_id: &str, q: &str, recursive: bool) -> Result<Vec<String>, Error>;
-
-    fn query_on_nodes (&mut self, node: &Node, q: &str, recursive: bool) -> Result<Vec<&Node>, Error>;
-
-    fn retrieve (&self, elements: &Vec<String>, query: Vec<&str>, first: bool) -> Result<Vec<String>, Error>;
-
-    fn get_all_childs (&self, s: &String) -> Result<Vec<String>, Error>;
-
-    fn get_all_node_childs (&self, node: &Node) -> Result<Vec<&Node>, Error>;
-}
-
-impl Query for Hson {
-    /// Public method to query the data
-    fn query (&mut self, q: &str) -> Result<Vec<String>, Error> {
-        let mut results = Vec::new();
-        let mut set = Vec::new();
-        let parts: Vec<&str> = q.split(" ").collect();
-        let root_id = self.get_root();
-
-        set.push(root_id);
-
-        let ids = self.retrieve(&set, parts, true)?;
-        for uid in &ids {
-            results.push(uid.clone());
-        }
-
-        Ok(results)
-    }
-
-    /// Same as `query` but return nodes structures instead of their ids
-    fn query_nodes (&mut self, q: &str) -> Result<Vec<&Node>, Error> {
-        let mut results = Vec::new();
-        let mut set = Vec::new();
-        let parts: Vec<&str> = q.split(" ").collect();
-        let root_id = self.get_root();
-
-        set.push(root_id);
-
-        let ids = self.retrieve(&set, parts, true)?;
-        for uid in &ids {
-            results.push(&self.nodes[uid]);
-        }
-
-        Ok(results)
-    }
-
-    /// Same as `query` but constrain the search in the provided node's childs only
-    fn query_on (&mut self, node_id: &str, q: &str, recursive: bool) -> Result<Vec<String>, Error> {
-        let mut results = Vec::new();
-        let mut set = Vec::new();
-        let parts: Vec<&str> = q.split(" ").collect();
-
-        set.push(node_id.to_string());
-
-        let ids = self.retrieve(&set, parts, true)?;
-        for uid in &ids {
-            if recursive {
-                results.push(uid.clone());
-            } else {
-                match self.nodes.get(uid) {
-                    Some(n) => {
-                        if n.parent == node_id {
-                            results.push(uid.clone());
-                        }
-                    },
-                    None => {}
-                }
-            }
-        }
-
-        Ok(results)
-    }
-
-    /// Same as `query_on` but return nodes structures instead of their ids
-    fn query_on_nodes (&mut self, node: &Node, q: &str, recursive: bool) -> Result<Vec<&Node>, Error> {
-        let mut results = Vec::new();
-        let mut set = Vec::new();
-        let parts: Vec<&str> = q.split(" ").collect();
-
-        set.push(node.id.clone());
-
-        let ids = self.retrieve(&set, parts, true)?;
-        for uid in &ids {
-            if recursive {
-                results.push(&self.nodes[uid]);
-            } else {
-                match self.nodes.get(uid) {
-                    Some(n) => {
-                        if n.parent == node.id {
-                            results.push(&self.nodes[uid]);
-                        }
-                    },
-                    None => {}
-                }
-            }
-        }
-
-        Ok(results)
-    }
-
-    /// Recursive method looking for nodes matching the query
-    fn retrieve (&self, elements: &Vec<String>, mut query: Vec<&str>, first: bool) -> Result<Vec<String>, Error> {
-        let mut results = Vec::new();
-
-        if query.len() > 0 {
-            let current = if first { "" } else { query.remove(0) };
-            let l = query.len();
-
-            // loop on provided nodes. First call of the method will get the root element
-            for uid in elements {
-                let mut q = query.clone();
-
-                match self.nodes.get(uid) {
-                    Some(n) => {
-                        let key = if first { String::from("") } else { self.get_node_key(&n) };
-
-                        // If the node's key match the query slice and it reached the last slice of the query
-                        if &key == current {
-                            if l == 0 {
-                                results.push(uid.clone());
-                            }
-                        } else {
-                            // If not the first call of the method and the key does not match, insert back the query slice
-                            if !first {
-                                q.insert(0, current);
-                            }
-                        }
-
-                        let mut res = self.retrieve(&n.childs, q, false)?;
-                        results.append(&mut res);
-                    },
-                    None => {
-                        let e = Error::new(ErrorKind::InvalidData, format!("Cannot find node uid {}", &uid));
-                        return Err(e);
-                    }
-                }
-            }
-        }
-
-        Ok(results)
-    }
-
-    /// Get all childs of a node recursively
-    fn get_all_childs (&self, s: &String) -> Result<Vec<String>, Error> {
-        match self.nodes.get(s) {
-            Some(node) => {
-                let mut results = Vec::new();
-
-                if node.childs.len() > 0 {
-                    results.append(&mut node.childs.clone());
-
-                    for uid in &node.childs {
-                        let mut res = self.get_all_childs(uid)?;
-                        results.append(&mut res);
-                    }
-                }
-
-                Ok(results)
-            },
-            None => {
-                let e = Error::new(ErrorKind::InvalidData, format!("Cannot find node uid {}", s));
-                return Err(e);
-            }
-        }
-    }
-
-    /// Same as `get_all_childs` but returning nodes structures instead of their ids
-    fn get_all_node_childs (&self, node: &Node) -> Result<Vec<&Node>, Error> {
-        let mut results = Vec::new();
-
-        if node.childs.len() > 0 {
-            for uid in &node.childs {
-                match self.nodes.get(uid) {
-                    Some(n) => {
-                        results.push(n);
-
-                        let mut res = self.get_all_node_childs(n)?;
-                        results.append(&mut res);
-                    },
-                    None => {}
-                }
-            }
-        }
-
-        Ok(results)
-    }
-}
-
-
-pub trait Ops {
-    fn insert (&mut self, uid: &String, idx: usize, s: &str) -> Result<(), Error>;
-
-    fn remove (&mut self, uid: &String) -> Result<(), Error>;
-
-    fn insert_into_data (&mut self, hson: Hson, start: usize) -> Hson;
-
-    fn insert_into_nodes (&mut self, parent_id: String, start_idx: usize, hson: Hson) -> Hson;
-
-    fn right_push_instances (&mut self, start: u32, distance: u32, data_size: usize) -> Result<(), Error>;
-
-    fn remove_from_data (&mut self, begin: usize, end: usize);
-
-    fn remove_from_nodes (&mut self, parent_id: &str, uid: &str);
-
-    fn left_push_instances (&mut self, start: u32, distance: u32, data_size: usize) -> Result<(), Error>;
-
-    fn insert_comma (&mut self, uid: String, parent_uid: String);
-}
-
-impl Ops for Hson {
-    /// Insert an hson slice
-    fn insert (&mut self, uid: &String, idx: usize, s: &str) -> Result<(), Error> {
-        let mut slice_range = 0;
-
-        match self.nodes.get(uid) {
-            Some(node) => {
-                let mut t = self.clean(&s);
-                // Start instances count (for new_slice method) at the provided node instance number
-                // Subtract 1 to take care of the root instance in the new hson slice
-                let mut start_instance = node.instance - 1;
-                // From what instance the existing nodes should be pushed to the right
-                let mut start = node.instance + 1;
-                // From what position should the new slice should be inserted in the existing data
-                let mut start_idx = node.value[0] + 1;
-                let parent_id = node.id.clone();
-
-                // If the inserting position in the node's childs is not the first one,
-                // retrieve the new position based on the child values
-                if idx > 0 {
-                    let child_uid = match node.childs.get(idx - 1) {
-                        Some(id) => id,
-                        None => {
-                            let e = Error::new(ErrorKind::InvalidData, format!("Invalid index {}", idx));
-                            return Err(e);
-                        }
-                    };
-                    let child = match self.nodes.get(child_uid) {
-                        Some(c) => {
-                            if c.childs.len() > 0 {
-                                match self.nodes.get(&c.childs[c.childs.len() - 1]) {
-                                    Some(sc) => sc,
-                                    None => c
-                                }
-                            } else {
-                                c
-                            }
-                        },
-                        None => {
-                            let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", child_uid));
-                            return Err(e);
-                        }
-                    };
-
-                    start = child.instance + 1;
-                    start_instance = child.instance - 1;
-                    // Add 2 to take care of comma char
-                    start_idx = child.value[1] + 2;
-                }
-
-                if node.childs.len() > 0 {
-                    // Insert a comma if the inserting position is not the last one and there's not already one
-                    // When inserting in the middle of childs add the comma and push the position of all following nodes
-                    if idx < node.childs.len() && t[t.len() - 2] != COMMA {
-                        t.insert(t.len() - 1, ',');
-                    } else if idx >= node.childs.len() {
-                        let last_child_uid = node.childs[node.childs.len() - 1].clone();
-                        let current_uid = node.id.clone();
-                        self.insert_comma(last_child_uid, current_uid);
-                        start_idx += 1;
-                    }
-                }
-
-                // Parsing the new slice occurs only here to allow borrowing as there's no more use of the node variable
-                let s: String = t.into_iter().collect();
-                let s = s.as_str();
-                let mut hson = Hson::new_slice(start_instance);
-                hson.parse(s)?;
-
-                let root_id = hson.get_root();
-                match hson.nodes.get(&root_id) {
-                    Some(n) => {
-                        slice_range = n.value[1] - n.value[0];
-                    },
-                    None => {}
-                }
-
-                let num_keys = hson.nodes.keys().len() as u32;
-                // How much does the existing nodes must be pushed
-                let distance = num_keys - 1;
-                // Data size subtracting the root's curly bracket chars
-                let data_size = hson.data.len() - 2;
-
-                self.right_push_instances(start, distance, data_size)?;
-                hson = self.insert_into_data(hson, start_idx);
-                hson = self.insert_into_nodes(parent_id, start_idx, hson);
-            },
-            None => {
-                let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", uid));
-                return Err(e);
-            }
-        };
-
-        match self.nodes.get_mut(uid) {
-            Some(node) => {
-                node.value[1] += slice_range;
-            },
-            None => {}
-        };
-
-        self.fill_iterator();
-
-        match self.callback {
-            Some(c) => c(Event::Insert, uid.clone()),
-            None => {}
-        }
-
-        Ok(())
-    }
-
-    /// Remove a node and all its childs
-    fn remove (&mut self, uid: &String) -> Result<(), Error> {
-        match self.nodes.get(uid) {
-            Some(node) => {
-                let childs = self.get_all_childs(uid)?;
-                let instances_range = childs.len() + 1;
-                let start_instance = node.instance + childs.len() as u32 + 1;
-                let parent_id = node.parent.clone();
-                let data_start_pos = node.key[0];
-                let mut data_end_pos = node.value[1] + 1;
-                let mut data_size = node.value[1] - node.key[0] + 1;
-
-                if self.data[data_end_pos] == COMMA {
-                    data_end_pos += 1;
-                    data_size += 1;
-                }
-
-                self.left_push_instances(start_instance, instances_range as u32, data_size)?;
-                self.remove_from_data(data_start_pos, data_end_pos);
-                self.remove_from_nodes(&parent_id, uid);
-            },
-            None => {
-                let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", uid));
-                return Err(e);
-            }
-        }
-
-        self.fill_iterator();
-
-        match self.callback {
-            Some(c) => c(Event::Remove, uid.clone()),
-            None => {}
         }
 
         Ok(())
@@ -1246,6 +875,413 @@ impl Ops for Hson {
             },
             None => {}
         };
+    }
+
+    /// Recursive method looking for nodes matching the query
+    fn retrieve (&mut self, query: Vec<&str>) -> Result<Vec<String>, Error> {
+        let mut results = Vec::new();
+        let mut childs = Vec::new();
+
+        for (i, q) in query.iter().enumerate() {
+            childs = self.unique(&childs);
+
+            if i == 0 {
+                loop {
+                    let id = match self.next() {
+                        Some(s) => s,
+                        None => break
+                    };
+
+                    match &self.nodes.get(&id) {
+                        Some(node) => {
+                            let key = self.get_node_key(node);
+
+                            if &key == q {
+                                if i == query.len() - 1 {
+                                    results.push(id.clone());
+                                } else {
+                                    let mut c = self.get_all_childs(&id)?;
+                                    childs.append(&mut c);
+                                }
+                            }
+                        }
+                        None => {
+                            break
+                        }
+                    }
+                }
+            } else {
+                let mut tmp = Vec::new();
+
+                for child in &childs {
+                    match &self.nodes.get(child) {
+                        Some(node) => {
+                            let key = self.get_node_key(node);
+
+                            if &key == q {
+                                if i == query.len() - 1 {
+                                    results.push(child.clone());
+                                } else {
+                                    let mut c = self.get_all_childs(&child)?;
+                                    tmp.append(&mut c);
+                                }
+                            }
+                        }
+                        None => {
+                            break
+                        }
+                    }
+                }
+
+                childs = tmp;
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Clean a string of tab/newlines/spaces
+    fn clean (&self, s: &str) -> Vec<char> {
+        let mut string_array = Vec::new();
+        let mut in_string = false;
+        let mut previous = ' ';
+
+        for (_i, c) in s.chars().enumerate() {
+            if c == '"' {
+                if !in_string {
+                    in_string = true;
+                } else {
+                    if previous != '\\' {
+                        in_string = false;
+                    }
+                }
+            }
+
+            if in_string || (c != ' ' && c != '\t' && c != '\r' && c != '\n') {
+                string_array.push(c);
+            }
+
+            previous = c;
+        }
+
+        string_array
+    }
+
+    /// Deduplicate vector's values
+    fn unique (&self, v: &Vec<String>) -> Vec<String> {
+        let mut results = Vec::new();
+
+        for value in v {
+            if !results.contains(value) {
+                results.push(value.clone());
+            }
+        }
+
+        results
+    }
+
+    fn controls_count (&mut self, c: &char, previous: &char) {
+        if c == &OPEN_CURLY {
+            self.controls.curly_brackets += 1;
+        }
+
+            else if c == &CLOSE_CURLY {
+                self.controls.curly_brackets -= 1;
+            }
+
+                else if c == &DOUBLE_QUOTES {
+                    if self.controls.double_quotes > 0 && previous != &'\\' {
+                        self.controls.double_quotes = 0;
+                    } else {
+                        self.controls.double_quotes = 1;
+                    }
+                }
+
+                    else if c == &OPEN_ARR {
+                        self.controls.square_brackets += 1;
+                    }
+
+                        else if c == &CLOSE_ARR {
+                            self.controls.square_brackets -= 1;
+                        }
+    }
+
+    fn fill_iterator (&mut self) {
+        self.vec_it.clear();
+        let mut previous_instance = self.instances - self.indexes.len() as u32;
+
+        loop {
+            for (key, _value) in &self.nodes {
+                let node = self.nodes.get(key).unwrap();
+
+                if node.instance == previous_instance + 1 {
+                    self.vec_it.push(node.id.clone());
+                    previous_instance += 1;
+                }
+            }
+
+            if previous_instance >= self.instances as u32 {
+                break;
+            }
+        }
+    }
+
+    fn validate (&self) -> Result<(), Error> {
+        for (_key, value) in &self.nodes {
+            if value.opened {
+                let mut key = self.get_node_key(value);
+
+                if key.is_empty() {
+                    key = String::from("root");
+                }
+
+                let e = Error::new(ErrorKind::InvalidData, format!("Invalid data at `{}`", key));
+                return Err(e);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+
+pub trait Query {
+    fn query (&mut self, q: &str) -> Result<Vec<String>, Error>;
+
+    fn query_nodes (&mut self, q: &str) -> Result<Vec<&Node>, Error>;
+
+    fn query_on (&mut self, node_id: &str, q: &str, recursive: bool) -> Result<Vec<String>, Error>;
+
+    fn query_on_nodes (&mut self, node: &Node, q: &str, recursive: bool) -> Result<Vec<&Node>, Error>;
+}
+
+impl Query for Hson {
+    /// Public method to query the data
+    fn query (&mut self, q: &str) -> Result<Vec<String>, Error> {
+        let parts: Vec<&str> = q.split(" ").collect();
+        let results = self.retrieve(parts)?;
+
+        Ok(results)
+    }
+
+    /// Same as `query` but return nodes structures instead of their ids
+    fn query_nodes (&mut self, q: &str) -> Result<Vec<&Node>, Error> {
+        let mut results = Vec::new();
+        let parts: Vec<&str> = q.split(" ").collect();
+
+        let ids = self.retrieve(parts)?;
+        for uid in &ids {
+            results.push(&self.nodes[uid]);
+        }
+
+        Ok(results)
+    }
+
+    /// Same as `query` but constrain the search in the provided node's childs only
+    fn query_on (&mut self, node_id: &str, q: &str, recursive: bool) -> Result<Vec<String>, Error> {
+        let mut results = Vec::new();
+        let parts: Vec<&str> = q.split(" ").collect();
+
+        let ids = self.retrieve(parts)?;
+        for uid in &ids {
+            if recursive {
+                if self.is_descendant(node_id, uid) {
+                    results.push(uid.clone());
+                }
+            } else {
+                match self.nodes.get(uid) {
+                    Some(n) => {
+                        if n.parent == node_id {
+                            results.push(uid.clone());
+                        }
+                    },
+                    None => {}
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Same as `query_on` but return nodes structures instead of their ids
+    fn query_on_nodes (&mut self, node: &Node, q: &str, recursive: bool) -> Result<Vec<&Node>, Error> {
+        let mut results = Vec::new();
+        let parts: Vec<&str> = q.split(" ").collect();
+
+        let ids = self.retrieve(parts)?;
+        for uid in &ids {
+            if recursive {
+                if self.is_descendant(&node.id, uid) {
+                    results.push(&self.nodes[uid]);
+                }
+            } else {
+                match self.nodes.get(uid) {
+                    Some(n) => {
+                        if n.parent == node.id {
+                            results.push(&self.nodes[uid]);
+                        }
+                    },
+                    None => {}
+                }
+            }
+        }
+
+        Ok(results)
+    }
+}
+
+
+pub trait Ops {
+    fn insert (&mut self, uid: &String, idx: usize, s: &str) -> Result<(), Error>;
+
+    fn remove (&mut self, uid: &String) -> Result<(), Error>;
+}
+
+impl Ops for Hson {
+    /// Insert an hson slice
+    fn insert (&mut self, uid: &String, idx: usize, s: &str) -> Result<(), Error> {
+        let mut slice_range = 0;
+
+        match self.nodes.get(uid) {
+            Some(node) => {
+                let mut t = self.clean(&s);
+                // Start instances count (for new_slice method) at the provided node instance number
+                // Subtract 1 to take care of the root instance in the new hson slice
+                let mut start_instance = node.instance - 1;
+                // From what instance the existing nodes should be pushed to the right
+                let mut start = node.instance + 1;
+                // From what position should the new slice should be inserted in the existing data
+                let mut start_idx = node.value[0] + 1;
+                let parent_id = node.id.clone();
+
+                // If the inserting position in the node's childs is not the first one,
+                // retrieve the new position based on the child values
+                if idx > 0 {
+                    let child_uid = match node.childs.get(idx - 1) {
+                        Some(id) => id,
+                        None => {
+                            let e = Error::new(ErrorKind::InvalidData, format!("Invalid index {}", idx));
+                            return Err(e);
+                        }
+                    };
+                    let child = match self.nodes.get(child_uid) {
+                        Some(c) => {
+                            if c.childs.len() > 0 {
+                                match self.nodes.get(&c.childs[c.childs.len() - 1]) {
+                                    Some(sc) => sc,
+                                    None => c
+                                }
+                            } else {
+                                c
+                            }
+                        },
+                        None => {
+                            let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", child_uid));
+                            return Err(e);
+                        }
+                    };
+
+                    start = child.instance + 1;
+                    start_instance = child.instance - 1;
+                    // Add 2 to take care of comma char
+                    start_idx = child.value[1] + 2;
+                }
+
+                if node.childs.len() > 0 {
+                    // Insert a comma if the inserting position is not the last one and there's not already one
+                    // When inserting in the middle of childs add the comma and push the position of all following nodes
+                    if idx < node.childs.len() && t[t.len() - 2] != COMMA {
+                        t.insert(t.len() - 1, ',');
+                    } else if idx >= node.childs.len() {
+                        let last_child_uid = node.childs[node.childs.len() - 1].clone();
+                        let current_uid = node.id.clone();
+                        self.insert_comma(last_child_uid, current_uid);
+                        start_idx += 1;
+                    }
+                }
+
+                // Parsing the new slice occurs only here to allow borrowing as there's no more use of the node variable
+                let s: String = t.into_iter().collect();
+                let s = s.as_str();
+                let mut hson = Hson::new_slice(start_instance);
+                hson.parse(s)?;
+
+                let root_id = hson.get_root();
+                match hson.nodes.get(&root_id) {
+                    Some(n) => {
+                        slice_range = n.value[1] - n.value[0];
+                    },
+                    None => {}
+                }
+
+                let num_keys = hson.nodes.keys().len() as u32;
+                // How much does the existing nodes must be pushed
+                let distance = num_keys - 1;
+                // Data size subtracting the root's curly bracket chars
+                let data_size = hson.data.len() - 2;
+
+                self.right_push_instances(start, distance, data_size)?;
+                hson = self.insert_into_data(hson, start_idx);
+                hson = self.insert_into_nodes(parent_id, start_idx, hson);
+            },
+            None => {
+                let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", uid));
+                return Err(e);
+            }
+        };
+
+        match self.nodes.get_mut(uid) {
+            Some(node) => {
+                node.value[1] += slice_range;
+            },
+            None => {}
+        };
+
+        self.fill_iterator();
+
+        match self.callback {
+            Some(c) => c(Event::Insert, uid.clone()),
+            None => {}
+        }
+
+        Ok(())
+    }
+
+    /// Remove a node and all its childs
+    fn remove (&mut self, uid: &String) -> Result<(), Error> {
+        match self.nodes.get(uid) {
+            Some(node) => {
+                let childs = self.get_all_childs(uid)?;
+                let instances_range = childs.len() + 1;
+                let start_instance = node.instance + childs.len() as u32 + 1;
+                let parent_id = node.parent.clone();
+                let data_start_pos = node.key[0];
+                let mut data_end_pos = node.value[1] + 1;
+                let mut data_size = node.value[1] - node.key[0] + 1;
+
+                if self.data[data_end_pos] == COMMA {
+                    data_end_pos += 1;
+                    data_size += 1;
+                }
+
+                self.left_push_instances(start_instance, instances_range as u32, data_size)?;
+                self.remove_from_data(data_start_pos, data_end_pos);
+                self.remove_from_nodes(&parent_id, uid);
+            },
+            None => {
+                let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", uid));
+                return Err(e);
+            }
+        }
+
+        self.fill_iterator();
+
+        match self.callback {
+            Some(c) => c(Event::Remove, uid.clone()),
+            None => {}
+        }
+
+        Ok(())
     }
 }
 
@@ -1509,6 +1545,237 @@ impl Debug for Hson {
                  self.controls.curly_brackets,
                  self.controls.square_brackets,
                  self.controls.double_quotes);
+    }
+}
+
+
+pub trait Search {
+    fn search (&mut self, query: &str) -> Result<Vec<String>, Error>;
+}
+
+impl Search for Hson {
+    /// Enhanced queries
+    // standard search: div p
+    // no recursive search: div>p
+    // multiple search: div p|ul|article
+    // equality search: div p attrs id='12'
+    fn search (&mut self, query: &str) -> Result<Vec<String>, Error> {
+        let mut results = Vec::new();
+        let q = self.format_query(query);
+        let root_id = self.get_root();
+        let first = true;
+
+        // Add the root node in the results list for first lookup
+        results.push(root_id);
+        for part in q {
+            if part.contains(">") {
+                results = self.find_childs(&part, &results, first)?;
+            } else if part.contains("|") {
+                results = self.find_multiple_childs(&part, &results)?;
+            } else {
+                results = self.find_descendants(&part, &results)?;
+            }
+        }
+
+        results = self.unique(&results);
+
+        Ok(results)
+    }
+}
+
+trait SearchUtils {
+    fn format_query (&self, query: &str) -> Vec<String>;
+
+    fn clean_query (&self, query: &str) -> Vec<char>;
+
+    fn find_descendants (&mut self, query: &str, existing: &Vec<String>) -> Result<Vec<String>, Error>;
+
+    fn find_childs (&mut self, query: &str, existing: &Vec<String>, first: bool) -> Result<Vec<String>, Error>;
+
+    fn find_multiple_childs (&mut self, query: &str, existing: &Vec<String>) -> Result<Vec<String>, Error>;
+
+    fn filter_equality_childs (&mut self, query: &str, results: &Vec<String>) -> Result<Vec<String>, Error>;
+}
+
+impl SearchUtils for Hson {
+    fn format_query (&self, query: &str) -> Vec<String> {
+        let mut result = Vec::new();
+        let q = self.clean_query(query);
+        let mut in_string = false;
+        let mut previous = ' ';
+        let mut item = String::from("");
+
+        for c in q {
+            if c == '\'' {
+                if !in_string {
+                    in_string = true;
+                } else {
+                    if previous != '\\' {
+                        in_string = false;
+                    }
+                }
+            }
+
+            if c == ' ' && !in_string {
+                result.push(item);
+                item = String::from("");
+            } else {
+                item.push_str(&c.to_string());
+            }
+
+            previous = c;
+        }
+
+        if !item.is_empty() {
+            result.push(item);
+        }
+
+        result
+    }
+
+    fn clean_query (&self, query: &str) -> Vec<char> {
+        let mut string_array = Vec::new();
+        let mut in_string = false;
+        let mut previous = ' ';
+
+        for (_i, c) in query.chars().enumerate() {
+            if c == '\'' {
+                if !in_string {
+                    in_string = true;
+                } else {
+                    if previous != '\\' {
+                        in_string = false;
+                    }
+                }
+            }
+
+            if in_string {
+                string_array.push(c);
+            } else if c == '>' || c == '=' || c == '|' {
+                let l = string_array.len();
+                if string_array[l - 1] == ' ' {
+                    string_array.remove(l - 1);
+                }
+
+                string_array.push(c);
+            } else if c != ' ' && c != '\t' && c != '\r' && c != '\n' {
+                string_array.push(c);
+            } else {
+                match previous {
+                    ' ' |
+                    '\t' |
+                    '\r' |
+                    '\n' |
+                    '>' |
+                    '=' |
+                    '|' => continue,
+                    _ => string_array.push(' ')
+                }
+            }
+
+            previous = c;
+        }
+
+        string_array
+    }
+
+    fn find_descendants (&mut self, query: &str, existing: &Vec<String>) -> Result<Vec<String>, Error> {
+        let mut results = Vec::new();
+
+        for r in existing {
+            if query.contains("=") {
+                let parts: Vec<&str> = query.split("=").collect();
+                let mut t = self.query_on(r, parts[0], true)?;
+                t = self.filter_equality_childs(query, &t)?;
+                results.append(&mut t);
+            } else {
+                let mut t = self.query_on(r, query, true)?;
+                results.append(&mut t);
+            }
+        }
+
+        Ok(results)
+    }
+
+    fn find_childs (&mut self, query: &str, existing: &Vec<String>, mut first: bool) -> Result<Vec<String>, Error> {
+        let mut results = existing.clone();
+        let elements: Vec<&str> = query.split(">").collect();
+
+        // Loop on each element of the query
+        for elm in elements {
+            let mut res = Vec::new();
+
+            // And look for those query elements in existing results
+            for r in &results {
+                if elm.contains("=") {
+                    let parts: Vec<&str> = elm.split("=").collect();
+                    let mut t = self.query_on(r, parts[0], first)?;
+                    t = self.filter_equality_childs(elm, &t)?;
+                    res.append(&mut t);
+                } else {
+                    let mut t = self.query_on(r, elm, first)?;
+                    res.append(&mut t);
+                }
+            }
+
+            results = res;
+
+            // First lookup must be recursive, following must not
+            first = false;
+        }
+
+        Ok(results)
+    }
+
+    fn find_multiple_childs (&mut self, query: &str, existing: &Vec<String>) -> Result<Vec<String>, Error> {
+        let elements: Vec<&str> = query.split("|").collect();
+        let mut results = Vec::new();
+
+        for elm in elements {
+            for r in existing {
+                if elm.contains("=") {
+                    let parts: Vec<&str> = elm.split("=").collect();
+                    let mut t = self.query_on(r, parts[0], true)?;
+                    t = self.filter_equality_childs(elm, &t)?;
+                    results.append(&mut t);
+                } else {
+                    let mut t = self.query_on(r, elm, true)?;
+                    results.append(&mut t);
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    fn filter_equality_childs (&mut self, query: &str, existing: &Vec<String>) -> Result<Vec<String>, Error> {
+        let mut results = Vec::new();
+        let parts: Vec<&str> = query.split("=").collect();
+        let chars: Vec<char> = parts[1].chars().collect();
+        let equality = chars[1..chars.len()-1].iter().cloned().collect::<String>();
+        let mut patterns = Vec::new();
+
+        patterns.push(equality.as_str());
+        if patterns[0].contains("|") {
+            patterns = patterns[0].split("|").collect();
+        }
+
+        for res in existing {
+            match self.nodes.get(res) {
+                Some(node) => {
+                    for pattern in &patterns {
+                        let value = self.get_node_value(node);
+
+                        if value == pattern.trim() {
+                            results.push(res.clone());
+                        }
+                    }
+                },
+                None => {}
+            }
+        }
+
+        Ok(results)
     }
 }
 
