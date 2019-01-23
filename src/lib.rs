@@ -1287,6 +1287,16 @@ impl Ops for Hson {
 
 
 pub trait Cast {
+    fn key_as_string (&self) -> Option<String>;
+
+    fn key_as_f64 (&self) -> Option<f64>;
+
+    fn key_as_i64 (&self) -> Option<i64>;
+
+    fn key_as_u64 (&self) -> Option<u64>;
+
+    fn key_as_bool (&self) -> Option<bool>;
+
     fn value_as_string (&self) -> Option<String>;
 
     fn value_as_f64 (&self) -> Option<f64>;
@@ -1309,49 +1319,46 @@ pub trait Cast {
 }
 
 impl Cast for Vertex {
+    fn key_as_string (&self) -> Option<String> {
+        let v = self.key.clone();
+        Some(v)
+    }
+
+    fn key_as_f64 (&self) -> Option<f64> {
+        self.as_f64(&self.key)
+    }
+
+    fn key_as_i64 (&self) -> Option<i64> {
+        self.as_i64(&self.key)
+    }
+
+    fn key_as_u64 (&self) -> Option<u64> {
+        self.as_u64(&self.key)
+    }
+
+    fn key_as_bool (&self) -> Option<bool> {
+        self.as_bool(&self.key)
+    }
+
     fn value_as_string (&self) -> Option<String> {
         let v = self.value.clone();
         Some(v)
     }
 
     fn value_as_f64 (&self) -> Option<f64> {
-        let v = self.value.parse::<f64>();
-
-        if v.is_ok() {
-            Some(v.unwrap())
-        } else {
-            None
-        }
+        self.as_f64(&self.value)
     }
 
     fn value_as_i64 (&self) -> Option<i64> {
-        let v = self.value.parse::<i64>();
-
-        if v.is_ok() {
-            Some(v.unwrap())
-        } else {
-            None
-        }
+        self.as_i64(&self.value)
     }
 
     fn value_as_u64 (&self) -> Option<u64> {
-        let v = self.value.parse::<u64>();
-
-        if v.is_ok() {
-            Some(v.unwrap())
-        } else {
-            None
-        }
+        self.as_u64(&self.value)
     }
 
     fn value_as_bool (&self) -> Option<bool> {
-        let v = match self.value.as_ref() {
-            "true" => Some(true),
-            "false" => Some(false),
-            _ => None
-        };
-
-        v
+        self.as_bool(&self.value)
     }
 
     fn value_as_array (&self) -> Option<Vec<String>> {

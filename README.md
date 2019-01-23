@@ -240,6 +240,11 @@ println!("{}", vertex.as_f64(s));
 ```
 
 ##### Vertex methods
+* `fn key_as_string (&self) -> Option<String>`
+* `fn key_as_f64 (&self) -> Option<f64>`
+* `fn key_as_i64 (&self) -> Option<i64>`
+* `fn key_as_u64 (&self) -> Option<u64>`
+* `fn key_as_bool (&self) -> Option<bool>`
 * `fn value_as_string (&self) -> Option<String>`
 * `fn value_as_f64 (&self) -> Option<f64>`
 * `fn value_as_i64 (&self) -> Option<i64>`
