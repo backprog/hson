@@ -4,7 +4,6 @@ The parser can be used for other purposes, but its main goal is to represent a H
 
 ## Main differences with standard json
 * Allow same key multiple times in same object
-* Does not allow array of objects
 * Does not allow `null` and `undefined`
 
 ## Usage

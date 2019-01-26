@@ -1,9 +1,8 @@
 {
   "div": {
     "attrs": {
-      "class": ["active", 123, 0.25864, "test"],
-      "onClick": "doSomething",
-      "rel": <json>"{\"div\":[[\"abc\"],[\"cde\",\"fgh\"]]}"
+      "class": [""],
+      "onClick": "doSomething"
     },
     "div": {
       "p": {

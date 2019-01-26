@@ -3,7 +3,12 @@
     "attrs": {
       "class": [""],
       "onClick": "doSomething",
-      "rel": <json>"{\"div\":[[\"abc\"],[\"cde\",\"fgh\"]]}"
+      "rel": {
+        "div": [
+          ["abc"],
+          ["cde","fgh"]
+        ]
+      }
     },
     "div": {
       "p":{

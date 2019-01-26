@@ -39,7 +39,7 @@ pub enum Kind {
     Float,
     String,
     Bool,
-    Json
+    Null
 }
 
 /// Hson node
@@ -53,7 +53,6 @@ pub struct Node {
     pub value: [usize; 2],
     pub id: String,
     pub opened: bool,
-    pub json: bool,
     pub instance: u32
 }
 
@@ -87,7 +86,8 @@ pub struct Hson {
     controls: Controls,
     process_start: Instant,
     vec_it: Vec<String>,
-    callback: Option<Callback>
+    callback: Option<Callback>,
+    cache: HashMap<String, Vec<String>>
 }
 
 impl Hson {
@@ -106,7 +106,8 @@ impl Hson {
             },
             process_start: Instant::now(),
             vec_it: Vec::new(),
-            callback: None
+            callback: None,
+            cache: HashMap::new()
         };
 
         hson
@@ -127,7 +128,8 @@ impl Hson {
             },
             process_start: Instant::now(),
             vec_it: Vec::new(),
-            callback: None
+            callback: None,
+            cache: HashMap::new()
         };
 
         hson
@@ -137,8 +139,10 @@ impl Hson {
     pub fn parse (&mut self, s: &str) -> Result<(), Error> {
         let mut data: Vec<char> = self.clean(&s);
         let mut previous = ' ';
-        let mut before_colons = true;
+        let mut in_string = false;
         let mut string_just_closed = false;
+        let mut in_array = false;
+        let mut skip = false;
         let mut l = data.len();
         let mut i = 0;
         let mut root_uid = String::from("");
@@ -152,149 +156,181 @@ impl Hson {
                 return Err(e);
             }
 
-            let in_string = self.controls.double_quotes > 0 && c != DOUBLE_QUOTES && previous != '\\';
-            let in_array = self.controls.square_brackets > 0;
+            in_string = self.controls.double_quotes > 0 && c != DOUBLE_QUOTES && previous != '\\';
+            string_just_closed = self.controls.double_quotes > 0 && c == DOUBLE_QUOTES && previous != '\\';
 
-            // Is current char a double quotes closing a string
-            if self.controls.double_quotes > 0 && c == DOUBLE_QUOTES && previous != '\\' {
-                string_just_closed = true;
-            } else {
-                string_just_closed = false;
-            }
+//            println!("CHAR: {}", &c);
+//            println!("IN_STRING: {}", &in_string);
+//            println!("STRING CLOSED: {}", &string_just_closed);
 
-            // DEBUG
-            /*
-            println!("CHAR: {}", &c);
-            println!("IN_STRING: {}", &in_string);
-            println!("IN_ARRAY: {}", &in_array);
-            println!("BEFORE_COLONS: {}", &before_colons);
-            println!("STRING_CLOSED: {}", &string_just_closed);
-            */
-
-            // Is current char a control character
             match self.controls.chars.iter().position(|&s| s == c && !in_string) {
                 Some(_) => {
                     self.controls_count(&c, &previous);
 
-                    // Is current char position is before colons
-                    if c != DOUBLE_QUOTES && !in_string && !in_array {
-                        before_colons = true;
-                    }
-
-                    // If colons char is encountered or the first opening curly bracket
-                    if c == COLONS || (c == OPEN_CURLY && i == 0) {
-                        if c == COLONS {
-                            before_colons = false;
-                        }
-
-                        let uid = Uuid::new_v4().to_string();
-                        let root = i == 0;
-                        let parent = if i == 0 { String::from("") } else { self.get_previous_opened_node(self.indexes.len(), true)? };
-                        let key = if i == 0 { [0, 0] } else { self.get_node_key_position(i, &data)? };
-                        let mut kind = if i == 0 { Kind::Node } else { self.get_node_kind(i, &data)? };
-                        let value = if i == 0 { [i, data.len()] } else {
-                            match &kind {
-                                &Kind::Bool |
-                                &Kind::Integer |
-                                &Kind::Float => [i, data.len()],
-                                _ => [i + 1, data.len()]
-                            }
-
-                        };
-                        let mut json = false;
-
-                        if root {
-                            root_uid = uid.clone();
-                        }
-
-                        // If kind is json, remove json tag, switch back to String kind and mark the node as json
-                        // Note: Add support for other tag formats
-                        if kind == Kind::Json {
-                            l = self.remove_type(i, &mut data, "json");
-                            kind = Kind::String;
-                            json = true;
-                        }
-
-                        // Insert the new node
-                        self.instances += 1;
-                        self.indexes.push(uid.clone());
-                        self.nodes.insert(uid.clone(), Node {
-                            root,
-                            kind,
-                            parent,
-                            childs: Vec::new(),
-                            key,
-                            value,
-                            id: uid.clone(),
-                            opened: true,
-                            json,
-                            instance: self.instances
-                        });
-
-                        if i > 0 {
-                            // Get previous opened node and insert current node as one of its childs
-                            let prev_node_uid = self.get_previous_opened_node(self.nodes.len() - 1, true)?;
-                            match self.nodes.get_mut(&prev_node_uid) {
-                                Some(n) => n.childs.push(uid),
-                                None => {
-                                    let e = Error::new(ErrorKind::Other, format!("Parent node cannot be retrieved at {}", i));
-                                    return Err(e);
-                                }
-                            };
-                        }
-                    }
-
-                    // Closing controls. Get previous opened node and close it
-                    else if c == CLOSE_CURLY || c == CLOSE_ARR || (c == DOUBLE_QUOTES && string_just_closed && !before_colons && previous != '\\') {
-                        if c == CLOSE_CURLY {
-                            match &previous {
-                                &CLOSE_CURLY |
-                                &CLOSE_ARR |
-                                &OPEN_CURLY |
-                                &COMMA |
-                                &DOUBLE_QUOTES => {},
-                                _ => {
-                                    self.close_previous_node(self.nodes.len(), i)?;
-                                }
-                            }
-                        }
-
-                        let prev_node_uid = self.get_previous_node(i, &c)?;
-
-                        match self.nodes.get_mut(&prev_node_uid) {
-                            Some(n) => {
-                                n.opened = false;
-                                n.value = [n.value[0], i];
-                            },
-                            None => {
-                                let e = Error::new(ErrorKind::Other, format!("Node cannot be closed at {}", i));
-                                return Err(e);
-                            }
-                        };
-                    }
-
-                    // Line ending control. Get previous opened node and close it
-                    else if c == COMMA && !in_string && !in_array {
-                        if previous != CLOSE_CURLY && previous != CLOSE_ARR && previous != DOUBLE_QUOTES {
-                            let prev_node_uid = self.get_previous_opened_node(self.nodes.len(), false)?;
-
-                            match self.nodes.get_mut(&prev_node_uid) {
-                                Some(n) => {
-                                    n.opened = false;
-                                    n.value = [n.value[0], i];
-                                },
-                                None => {
-                                    let e = Error::new(ErrorKind::Other, format!("Node cannot be closed at {}", i));
-                                    return Err(e);
-                                }
-                            };
-                        }
+                    if skip {
+                        skip = false;
                     }
                 },
-                None => {
-                    if !in_array && !in_string && before_colons {
-                        let e = Error::new(ErrorKind::InvalidData, format!("Invalid character {} at {}", c, i));
-                        return Err(e);
+                None => {}
+            }
+
+//            println!("SKIP {}", &skip);
+
+            if !in_string && !skip {
+                let mut kind = match c {
+                    CLOSE_CURLY => Kind::Null,
+                    CLOSE_ARR => Kind::Null,
+                    COMMA => Kind::Null,
+                    COLONS => Kind::Null,
+                    _ => {
+                        self.get_node_kind(i, &data)?
+                    }
+                };
+
+//                println!("KIND {:?}", &kind);
+
+                match &kind {
+                    &Kind::Bool |
+                    &Kind::Integer |
+                    &Kind::Float => {
+                        skip = true;
+                    },
+                    _ => {}
+                }
+
+                let insert = match &kind {
+                    &Kind::Null => {
+                        false
+                    },
+                    &Kind::String => {
+                        if string_just_closed {
+                            false
+                        } else {
+                            let is_before = self.is_before_colons(i, &data);
+//                            println!("BEFORE COLONS {}", &is_before);
+
+                            !is_before
+                        }
+                    },
+                    _ => true
+                };
+
+//                println!("INSERT {}", &insert);
+
+                if insert {
+                    let uid = Uuid::new_v4().to_string();
+                    let root = i == 0;
+                    let parent = if root { String::from("") } else {
+                        self.get_previous_opened_node(self.indexes.len(), true, &Kind::Null)?
+                    };
+                    let parent_is_array = self.node_is_array(&parent);
+
+//                    println!("PARENT ARRAY {}", &parent_is_array);
+
+                    let key = if root || parent_is_array { [0, 0] } else {
+                        self.get_node_key_position(i, &data)?
+                    };
+                    let value = if root { [i, data.len()] } else {
+                        match &kind {
+                            &Kind::Bool |
+                            &Kind::Integer |
+                            &Kind::Float => [i, data.len()],
+                            _ => [i + 1, data.len()]
+                        }
+
+                    };
+
+                    if root {
+                        root_uid = uid.clone();
+                    }
+
+                    // Insert the new node
+                    self.instances += 1;
+                    self.indexes.push(uid.clone());
+                    self.nodes.insert(uid.clone(), Node {
+                        root,
+                        kind: kind.clone(),
+                        parent: parent.clone(),
+                        childs: Vec::new(),
+                        key,
+                        value,
+                        id: uid.clone(),
+                        opened: true,
+                        instance: self.instances
+                    });
+
+                    if !root {
+                        match self.nodes.get_mut(&parent) {
+                            Some(node) => node.childs.push(uid.clone()),
+                            None => {}
+                        }
+
+                        if key != [0, 0] {
+                            let mut key_str = String::from("");
+                            for e in key[0]+1..key[1] {
+                                key_str.push(data[e]);
+                            }
+                            self.caching(key_str, uid.clone());
+                        }
+                    }
+                }
+
+                let close = match &kind {
+                    &Kind::Bool |
+                    &Kind::Integer |
+                    &Kind::Float => true,
+                    _ => {
+                        match c {
+                            CLOSE_CURLY => true,
+                            CLOSE_ARR => true,
+                            DOUBLE_QUOTES => {
+                                if string_just_closed {
+                                    let is_before = self.is_before_colons(i, &data);
+//                                    println!("BEFORE COLONS {}", &is_before);
+
+                                    if is_before { false } else { true }
+                                } else { false }
+                            },
+                            _ => false
+                        }
+                    }
+                };
+
+//                println!("CLOSE {}", &close);
+
+                if close {
+                    match &kind {
+                        &Kind::Bool |
+                        &Kind::Integer |
+                        &Kind::Float => {
+                            let v = self.extract_value(i, &data)?;
+                            let current_node_id = self.get_previous_opened_node(self.nodes.len(), false, &kind)?;
+
+                            match self.nodes.get_mut(&current_node_id) {
+                                Some(node) => {
+                                    node.value[1] = i + v.len() - 1;
+                                    node.opened = false;
+                                },
+                                None => {}
+                            }
+                        },
+                        _ => {
+                            let closing_kind = match c {
+                                CLOSE_CURLY => Kind::Node,
+                                CLOSE_ARR => Kind::Array,
+                                DOUBLE_QUOTES => Kind::String,
+                                _ => continue
+                            };
+                            let previous_node_id = self.get_previous_opened_node(self.nodes.len(), true, &closing_kind)?;
+
+                            match self.nodes.get_mut(&previous_node_id) {
+                                Some(node) => {
+                                    node.value[1] = i;
+                                    node.opened = false;
+                                },
+                                None => {}
+                            }
+                        }
                     }
                 }
             }
@@ -464,29 +500,23 @@ impl Hson {
     }
 
     /* PRIVATE */
-    /// Remove format tags
-    fn remove_type (&self, pos: usize, data: &mut Vec<char>, kind: &str) -> usize {
-        if kind == "json" {
-            data.splice(pos+1..pos+7, vec!());
-        }
-
-        data.len()
-    }
-
     /// Retrieve a node key position
-    fn get_node_key_position (&self, i: usize, data: &Vec<char>) -> Result<[usize; 2], Error> {
-        let end = i - 1;
-        let mut n = end;
-        let mut k = [0, n];
+    fn get_node_key_position (&self, mut data_start_pos: usize, data: &Vec<char>) -> Result<[usize; 2], Error> {
+        let mut k = [0, data_start_pos];
+        let mut on_match: i8 = 1;
 
         loop {
-            n = if n > 0 { n - 1 } else {
-                let e = Error::new(ErrorKind::InvalidData, format!("Invalid format at {}", i));
+            data_start_pos = if data_start_pos > 0 { data_start_pos - 1 } else {
+                let e = Error::new(ErrorKind::InvalidData, format!("Invalid format at {}", data_start_pos));
                 return Err(e);
             };
 
-            if data[n] == '"' {
-                k[0] = n;
+            if data[data_start_pos] == '"' {
+                k[on_match as usize] = data_start_pos;
+                on_match -= 1;
+            }
+
+            if on_match < 0 {
                 break;
             }
         }
@@ -495,51 +525,24 @@ impl Hson {
     }
 
     /// Retrieve a node type
-    fn get_node_kind (&self, i: usize, data: &Vec<char>) -> Result<Kind, Error> {
-        match data[i + 1] {
+    fn get_node_kind (&self, data_start_pos: usize, data: &Vec<char>) -> Result<Kind, Error> {
+        match data[data_start_pos] {
             '{' => Ok(Kind::Node),
             '[' => Ok(Kind::Array),
             '"' => Ok(Kind::String),
-            '<' => {
-                let slice: String = data[i + 2..i + 6].into_iter().collect();
-                if &slice == "json" {
-                    Ok(Kind::Json)
-                } else {
-                    let e = Error::new(ErrorKind::InvalidData, format!("Invalid type {} at {}", &slice, i + 1));
-                    return Err(e);
-                }
-            },
             _ => {
-                let mut n = i;
                 let mut k = Kind::String;
+                let v = self.extract_value(data_start_pos, &data)?;
 
-                loop {
-                    n += 1;
-                    match self.controls.chars.iter().position(|&s| s == data[n]) {
-                        Some(_) => {
-                            let v: String = Vec::from_iter(data[i+1..n].iter().cloned()).into_iter().collect();
-
-                            if v.parse::<i64>().is_ok() {
-                                k = Kind::Integer;
-                                break;
-                            } else if v.parse::<f64>().is_ok() {
-                                k = Kind::Float;
-                                break;
-                            } else if v == "true" || v == "false" {
-                                k = Kind::Bool;
-                                break;
-                            } else {
-                                let e = Error::new(ErrorKind::InvalidData, format!("Invalid value {} at {}", v, i));
-                                return Err(e);
-                            }
-                        },
-                        None => {}
-                    }
-
-                    if n > data.len() {
-                        let e = Error::new(ErrorKind::InvalidData, format!("Invalid format at {}", i));
-                        return Err(e);
-                    }
+                if v.parse::<i64>().is_ok() {
+                    k = Kind::Integer;
+                } else if v.parse::<f64>().is_ok() {
+                    k = Kind::Float;
+                } else if v == "true" || v == "false" {
+                    k = Kind::Bool;
+                } else {
+                    let e = Error::new(ErrorKind::InvalidData, format!("Invalid value {} at {}", v, data_start_pos));
+                    return Err(e);
                 }
 
                 Ok(k)
@@ -547,47 +550,11 @@ impl Hson {
         }
     }
 
-    /// Retrieve the previous opened node of the same kind from the provided position in the hson string
-    fn get_previous_node (&self, i: usize, c: &char) -> Result<String, Error> {
-        let nodes = &self.nodes;
-        let mut prev_node_uid = "";
-        let mut l = self.indexes.len();
-
-        loop {
-            l = if l > 0 { l - 1 } else {
-                let e = Error::new(ErrorKind::InvalidData, format!("Invalid format at {}", i));
-                return Err(e);
-            };
-
-            match nodes.get(&self.indexes[l]) {
-                Some(n) => {
-                    let kind = match c {
-                        &CLOSE_CURLY => Kind::Node,
-                        &CLOSE_ARR => Kind::Array,
-                        &DOUBLE_QUOTES => Kind::String,
-                        _ => {
-                            let e = Error::new(ErrorKind::InvalidData, format!("Invalid format at {}", i));
-                            return Err(e);
-                        }
-                    };
-
-                    if n.opened && n.kind == kind {
-                        prev_node_uid = &n.id;
-                        break;
-                    }
-                },
-                None => {}
-            };
-        }
-
-        Ok(prev_node_uid.to_string())
-    }
-
     /// Retrieve the previous opened node from the provided node position
-    fn get_previous_opened_node (&self, i: usize, skip: bool) -> Result<String, Error> {
+    fn get_previous_opened_node (&self, node_start_pos: usize, skip_primitives: bool, kind: &Kind) -> Result<String, Error> {
         let nodes = &self.nodes;
         let mut prev_node_uid = "";
-        let mut l = i;
+        let mut l = node_start_pos;
 
         loop {
             l = if l > 0 { l - 1 } else {
@@ -598,19 +565,33 @@ impl Hson {
             match nodes.get(&self.indexes[l]) {
                 Some(n) => {
                     if n.opened {
-                        if skip {
+                        if skip_primitives {
                             match n.kind {
                                 Kind::Float |
                                 Kind::Integer |
                                 Kind::Bool => { continue },
                                 _ => {
+                                    if kind == &Kind::Null {
+                                        prev_node_uid = &n.id;
+                                        break;
+                                    } else {
+                                        if kind == &n.kind {
+                                            prev_node_uid = &n.id;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            if kind == &Kind::Null {
+                                prev_node_uid = &n.id;
+                                break;
+                            } else {
+                                if kind == &n.kind {
                                     prev_node_uid = &n.id;
                                     break;
                                 }
                             }
-                        } else {
-                            prev_node_uid = &n.id;
-                            break;
                         }
                     }
                 },
@@ -621,29 +602,52 @@ impl Hson {
         Ok(prev_node_uid.to_string())
     }
 
-    /// Close previous opened node
-    fn close_previous_node (&mut self, i: usize, pos: usize) -> Result<(), Error> {
-        let mut l = i;
-
+    /// Guess if position is before colons or not. Must be used on opening double quotes
+    fn is_before_colons (&self, mut data_start_pos: usize, data: &Vec<char>) -> bool {
         loop {
-            l = if l > 0 { l - 1 } else {
-                let e = Error::new(ErrorKind::Other, format!("Cannot retrieve previous opened node"));
-                return Err(e);
-            };
+            data_start_pos += 1;
 
-            match self.nodes.get_mut(&self.indexes[l]) {
-                Some(n) => {
-                    if n.opened {
-                        n.opened = false;
-                        n.value = [n.value[0], pos];
-                        break;
-                    }
-                },
-                None => {}
-            };
+            if data_start_pos >= data.len() {
+                break;
+            }
+
+            if data[data_start_pos] == ':' { return true; }
+
+            if data[data_start_pos] == DOUBLE_QUOTES && data[data_start_pos - 1] != '\\' {
+                return data[data_start_pos + 1] == ':';
+            }
         }
 
-        Ok(())
+        false
+    }
+
+    /// Is the node an array
+    fn node_is_array (&self, node_id: &str) -> bool {
+        match self.nodes.get(node_id) {
+            Some(node) => node.kind == Kind::Array,
+            None => false
+        }
+    }
+
+    /// Extract the value from a start position
+    fn extract_value (&self, data_start_pos: usize, data: &Vec<char>) -> Result<String, Error> {
+        let mut n = data_start_pos;
+
+        loop {
+            n += 1;
+            match self.controls.chars.iter().position(|&s| s == data[n]) {
+                Some(_) => {
+                    let v: String = Vec::from_iter(data[data_start_pos..n].iter().cloned()).into_iter().collect();
+                    return Ok(v);
+                },
+                None => {}
+            }
+
+            if n > data.len() {
+                let e = Error::new(ErrorKind::InvalidData, format!("Cannot retrieve node value from position {}", data_start_pos));
+                return Err(e);
+            }
+        }
     }
 
     /// Insert hson slice into data
@@ -706,6 +710,50 @@ impl Hson {
                 None => {}
             }
         }
+
+        hson
+    }
+
+    /// Insert hson slice nodes into existing cache
+    fn insert_into_cache (&mut self, mut hson: Hson) -> Hson {
+//        let keys = hson.cache.keys();
+//        let mut inserted = Vec::new();
+//
+//        for key in keys {
+//            match hson.cache.get_mut(key) {
+//                Some(hson_cache) => {
+//
+//                    match self.cache.get_mut(key) {
+//                        Some(self_cache) => {
+//
+//                            for hson_uid in hson_cache {
+//                                match hson.nodes.get(hson_uid) {
+//                                    Some(hson_node) => {
+//
+//                                        for (idx, self_uid) in self_cache.iter().enumerate() {
+//                                            match self.nodes.get(self_uid) {
+//                                                Some(self_node) => {
+//                                                    if self_node.instance > hson_node.instance && !inserted.contains(hson_uid) {
+//                                                        self_cache.insert(idx, hson_uid.clone());
+//                                                        inserted.push(hson_uid.clone());
+//                                                    }
+//                                                },
+//                                                None => {}
+//                                            }
+//                                        }
+//                                    },
+//                                    None => {}
+//                                }
+//                            }
+//                        },
+//                        None => {
+//                            self.cache.insert(key.clone(), hson_cache.clone());
+//                        }
+//                    }
+//                },
+//                None => {}
+//            }
+//        }
 
         hson
     }
@@ -794,6 +842,28 @@ impl Hson {
         self.nodes.remove(uid);
     }
 
+    /// Remove a node from the cache
+    fn remove_from_cache (&mut self, uid: &str) {
+//        let keys = self.cache.keys();
+//
+//        for key in keys {
+//            match self.cache.get_mut(key) {
+//                Some(v) => {
+//                    let mut to_remove = -1;
+//                    for (idx, id) in v.iter().enumerate() {
+//                        if id == uid {
+//                            to_remove = idx as i32;
+//                            break;
+//                        }
+//                    }
+//
+//                    v.remove(to_remove as usize);
+//                },
+//                None => {}
+//            }
+//        }
+    }
+
     /// Left push existing nodes instance, key and value
     fn left_push_instances (&mut self, start: u32, distance: u32, data_size: usize) -> Result<(), Error> {
         let l = self.indexes.len();
@@ -880,61 +950,55 @@ impl Hson {
     /// Recursive method looking for nodes matching the query
     fn retrieve (&mut self, query: Vec<&str>) -> Result<Vec<String>, Error> {
         let mut results = Vec::new();
-        let mut childs = Vec::new();
+        let mut tmp: Vec<(String, String)> = Vec::new();
+        let mut i = (query.len() - 1) as i32;
 
-        for (i, q) in query.iter().enumerate() {
-            childs = self.unique(&childs);
-
-            if i == 0 {
-                loop {
-                    let id = match self.next() {
-                        Some(s) => s,
-                        None => break
-                    };
-
-                    match &self.nodes.get(&id) {
-                        Some(node) => {
-                            let key = self.get_node_key(node);
-
-                            if &key == q {
-                                if i == query.len() - 1 {
-                                    results.push(id.clone());
-                                } else {
-                                    let mut c = self.get_all_childs(&id)?;
-                                    childs.append(&mut c);
-                                }
+        loop {
+            if i as usize == query.len() - 1 {
+                match self.cache.get(query[i as usize]) {
+                    Some(v) => {
+                        for uid in v {
+                            match self.nodes.get(uid) {
+                                Some(n) => {
+                                    let n: (String, String) = (n.id.clone(), n.parent.clone());
+                                    tmp.push(n);
+                                },
+                                None => {}
                             }
                         }
-                        None => {
-                            break
-                        }
-                    }
+                    },
+                    None => return Ok(results)
                 }
             } else {
-                let mut tmp = Vec::new();
+                let mut res: Vec<(String, String)> = Vec::new();
 
-                for child in &childs {
-                    match &self.nodes.get(child) {
+                for map in &tmp {
+                    let parent = &map.1;
+
+                    match self.nodes.get(parent) {
                         Some(node) => {
                             let key = self.get_node_key(node);
 
-                            if &key == q {
-                                if i == query.len() - 1 {
-                                    results.push(child.clone());
-                                } else {
-                                    let mut c = self.get_all_childs(&child)?;
-                                    tmp.append(&mut c);
-                                }
+                            if key == query[i as usize] {
+                                let n: (String, String) = (map.0.clone(), node.parent.clone());
+                                res.push(n);
                             }
-                        }
-                        None => {
-                            break
-                        }
+                        },
+                        None => {}
                     }
                 }
 
-                childs = tmp;
+                tmp = res;
             }
+
+            i -= 1;
+            if i < 0 {
+                break;
+            }
+        }
+
+        for t in tmp {
+            results.push(t.0);
         }
 
         Ok(results)
@@ -965,6 +1029,19 @@ impl Hson {
         }
 
         string_array
+    }
+
+    /// Cache
+    fn caching (&mut self, key: String, uid: String) {
+        match self.cache.get_mut(&key) {
+            Some(v) => v.push(uid),
+            None => {
+                let mut ids = Vec::new();
+                ids.push(uid);
+
+                self.cache.insert(key, ids);
+            }
+        }
     }
 
     /// Deduplicate vector's values
@@ -1035,7 +1112,7 @@ impl Hson {
                     key = String::from("root");
                 }
 
-                let e = Error::new(ErrorKind::InvalidData, format!("Invalid data at `{}`", key));
+                let e = Error::new(ErrorKind::InvalidData, format!("Invalid instance `{}`", value.instance));
                 return Err(e);
             }
         }
@@ -1223,6 +1300,7 @@ impl Ops for Hson {
                 self.right_push_instances(start, distance, data_size)?;
                 hson = self.insert_into_data(hson, start_idx);
                 hson = self.insert_into_nodes(parent_id, start_idx, hson);
+                hson = self.insert_into_cache(hson);
             },
             None => {
                 let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", uid));
@@ -1267,6 +1345,7 @@ impl Ops for Hson {
                 self.left_push_instances(start_instance, instances_range as u32, data_size)?;
                 self.remove_from_data(data_start_pos, data_end_pos);
                 self.remove_from_nodes(&parent_id, uid);
+                self.remove_from_cache(uid);
             },
             None => {
                 let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", uid));
@@ -1446,6 +1525,8 @@ pub trait Debug {
     fn print_process_time (&self);
 
     fn print_controls (&self);
+
+    fn print_cache (&self);
 }
 
 impl Debug for Hson {
@@ -1552,6 +1633,22 @@ impl Debug for Hson {
                  self.controls.curly_brackets,
                  self.controls.square_brackets,
                  self.controls.double_quotes);
+    }
+
+    fn print_cache (&self) {
+        let keys = self.cache.keys();
+
+        for key in keys {
+            println!("{}", &key);
+            match self.cache.get(key) {
+                Some(v) => {
+                    for uid in v {
+                        println!("\t{}", &uid);
+                    }
+                },
+                None => {}
+            }
+        }
     }
 }
 
