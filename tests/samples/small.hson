@@ -1,7 +1,7 @@
 {
   "div": {
     "attrs": {
-      "class": [""],
+      "class": ["active", 123, 0.25864, "test"],
       "onClick": "doSomething"
     },
     "div": {
@@ -9,7 +9,8 @@
         "attrs": {
           "id": 12,
           "rate": 0.4321,
-          "trusted": true
+          "trusted": true,
+          "text": "foo"
         },
         "span": {
           "text": "Hello"

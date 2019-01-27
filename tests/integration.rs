@@ -54,7 +54,7 @@ fn has_nodes_number () {
     let mut hson = Hson::new();
     hson.parse(&SHORT_DATA).unwrap();
 
-    assert_eq!(hson.indexes.len(), 21);
+    assert_eq!(hson.indexes.len(), 25);
 }
 
 #[test]
@@ -137,8 +137,8 @@ fn insertion () {
                     }"#;
 
     assert_eq!(hson.insert(&results[0], 0, child).unwrap(), ());
-    assert_eq!(hson.indexes.len(), 23);
-    assert_eq!(hson.nodes.keys().len(), 23);
+    assert_eq!(hson.indexes.len(), 29);
+    assert_eq!(hson.nodes.keys().len(), 29);
 }
 
 #[test]
@@ -150,8 +150,8 @@ fn deletion () {
     assert_eq!(results.len(), 2);
 
     assert_eq!(hson.remove(&results[0]).unwrap(), ());
-    assert_eq!(hson.indexes.len(), 14);
-    assert_eq!(hson.nodes.keys().len(), 14);
+    assert_eq!(hson.indexes.len(), 17);
+    assert_eq!(hson.nodes.keys().len(), 17);
 }
 
 #[test]

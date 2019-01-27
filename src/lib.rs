@@ -1,5 +1,4 @@
 #![allow(unused_assignments)]
-#![allow(dead_code)]
 
 extern crate uuid;
 
@@ -85,9 +84,9 @@ pub struct Hson {
     instances: u32,
     controls: Controls,
     process_start: Instant,
-    vec_it: Vec<String>,
     callback: Option<Callback>,
-    cache: HashMap<String, Vec<String>>
+    cache: HashMap<String, Vec<String>>,
+    iter_count: usize
 }
 
 impl Hson {
@@ -99,15 +98,15 @@ impl Hson {
             indexes: Vec::new(),
             instances: 0,
             controls: Controls {
-                chars: ['{', '}', '[', ']', ':', '"', ','],
+                chars: [OPEN_CURLY, CLOSE_CURLY, OPEN_ARR, CLOSE_ARR, COLONS, DOUBLE_QUOTES, COMMA],
                 curly_brackets: 0,
                 square_brackets: 0,
                 double_quotes: 0
             },
             process_start: Instant::now(),
-            vec_it: Vec::new(),
             callback: None,
-            cache: HashMap::new()
+            cache: HashMap::new(),
+            iter_count: 0
         };
 
         hson
@@ -121,29 +120,28 @@ impl Hson {
             indexes: Vec::new(),
             instances,
             controls: Controls {
-                chars: ['{', '}', '[', ']', ':', '"', ','],
+                chars: [OPEN_CURLY, CLOSE_CURLY, OPEN_ARR, CLOSE_ARR, COLONS, DOUBLE_QUOTES, COMMA],
                 curly_brackets: 0,
                 square_brackets: 0,
                 double_quotes: 0
             },
             process_start: Instant::now(),
-            vec_it: Vec::new(),
             callback: None,
-            cache: HashMap::new()
+            cache: HashMap::new(),
+            iter_count: 0
         };
 
         hson
     }
 
     /// Parse an hson string
-    pub fn parse (&mut self, s: &str) -> Result<(), Error> {
-        let mut data: Vec<char> = self.clean(&s);
+    pub fn parse (&mut self, data_to_parse: &str) -> Result<(), Error> {
+        let data: Vec<char> = self.clean(&data_to_parse);
         let mut previous = ' ';
         let mut in_string = false;
         let mut string_just_closed = false;
-        let mut in_array = false;
         let mut skip = false;
-        let mut l = data.len();
+        let l = data.len();
         let mut i = 0;
         let mut root_uid = String::from("");
 
@@ -163,21 +161,23 @@ impl Hson {
 //            println!("IN_STRING: {}", &in_string);
 //            println!("STRING CLOSED: {}", &string_just_closed);
 
-            match self.controls.chars.iter().position(|&s| s == c && !in_string) {
-                Some(_) => {
-                    self.controls_count(&c, &previous);
+            if !in_string {
+                match self.controls.chars.iter().position(|&s| s == c) {
+                    Some(_) => {
+                        self.controls_count(&c, &previous);
 
-                    if skip {
-                        skip = false;
-                    }
-                },
-                None => {}
+                        if skip {
+                            skip = false;
+                        }
+                    },
+                    None => {}
+                }
             }
 
 //            println!("SKIP {}", &skip);
 
             if !in_string && !skip {
-                let mut kind = match c {
+                let kind = match c {
                     CLOSE_CURLY => Kind::Null,
                     CLOSE_ARR => Kind::Null,
                     COMMA => Kind::Null,
@@ -244,6 +244,7 @@ impl Hson {
                         root_uid = uid.clone();
                     }
 
+                    // TODO: IMPROVE PERF
                     // Insert the new node
                     self.instances += 1;
                     self.indexes.push(uid.clone());
@@ -265,9 +266,10 @@ impl Hson {
                             None => {}
                         }
 
+                        // TODO: IMPROVE PERF
                         if key != [0, 0] {
                             let mut key_str = String::from("");
-                            for e in key[0]+1..key[1] {
+                            for e in key[0]..key[1] {
                                 key_str.push(data[e]);
                             }
                             self.caching(key_str, uid.clone());
@@ -308,7 +310,7 @@ impl Hson {
 
                             match self.nodes.get_mut(&current_node_id) {
                                 Some(node) => {
-                                    node.value[1] = i + v.len() - 1;
+                                    node.value[1] = i + v.len();
                                     node.opened = false;
                                 },
                                 None => {}
@@ -344,8 +346,6 @@ impl Hson {
         }
 
         self.data = data;
-        self.fill_iterator();
-
         self.validate()?;
 
         match self.callback {
@@ -365,11 +365,7 @@ impl Hson {
 
     /// Retrieve root node id
     pub fn get_root (&mut self) -> String {
-        if self.vec_it.len() == 0 {
-            self.fill_iterator();
-        }
-
-        let uid = self.vec_it[0].clone();
+        let uid = self.indexes[0].clone();
         uid
     }
 
@@ -380,10 +376,10 @@ impl Hson {
     }
 
     /// Retrieve a node key
-    pub fn get_node_key (&self, n: &Node) -> String {
+    pub fn get_node_key (&self, node: &Node) -> String {
         let mut key = String::from("");
-        let start = n.key[0] + 1;
-        let end = n.key[1];
+        let start = node.key[0];
+        let end = node.key[1];
 
         for i in start..end {
             key.push(self.data[i]);
@@ -393,10 +389,10 @@ impl Hson {
     }
 
     /// Retrieve a node value
-    pub fn get_node_value (&self, n: &Node) -> String {
+    pub fn get_node_value (&self, node: &Node) -> String {
         let mut value = String::from("");
-        let start = n.value[0] + 1;
-        let end = n.value[1];
+        let start = node.value[0];
+        let end = node.value[1];
 
         for i in start..end {
             value.push(self.data[i]);
@@ -406,8 +402,8 @@ impl Hson {
     }
 
     /// Get all childs of a node recursively
-    pub fn get_all_childs (&self, s: &String) -> Result<Vec<String>, Error> {
-        match self.nodes.get(s) {
+    pub fn get_all_childs (&self, node_id: &String) -> Result<Vec<String>, Error> {
+        match self.nodes.get(node_id) {
             Some(node) => {
                 let mut results = Vec::new();
 
@@ -423,7 +419,7 @@ impl Hson {
                 Ok(results)
             },
             None => {
-                let e = Error::new(ErrorKind::InvalidData, format!("Cannot find node uid {}", s));
+                let e = Error::new(ErrorKind::InvalidData, format!("Cannot find node id {}", node_id));
                 return Err(e);
             }
         }
@@ -451,13 +447,13 @@ impl Hson {
     }
 
     /// Is provided node a descendant of the provided parent
-    pub fn is_descendant (&self, parent: &str, child: &str) -> bool {
-        let mut current = child.to_string().clone();
+    pub fn is_descendant (&self, parent_id: &str, child_id: &str) -> bool {
+        let mut current = child_id.to_string().clone();
 
         loop {
             match self.nodes.get(&current) {
                 Some(node) => {
-                    if node.parent == parent {
+                    if node.parent == parent_id {
                         return true
                     } else {
                         if node.root {
@@ -473,8 +469,8 @@ impl Hson {
     }
 
     /// Subscribe to events
-    pub fn subscribe (&mut self, c: Callback) {
-        self.callback = Some(c);
+    pub fn subscribe (&mut self, callback: Callback) {
+        self.callback = Some(callback);
     }
 
     /// Get node clone with its key and value
@@ -499,6 +495,7 @@ impl Hson {
         }
     }
 
+
     /* PRIVATE */
     /// Retrieve a node key position
     fn get_node_key_position (&self, mut data_start_pos: usize, data: &Vec<char>) -> Result<[usize; 2], Error> {
@@ -512,7 +509,7 @@ impl Hson {
             };
 
             if data[data_start_pos] == '"' {
-                k[on_match as usize] = data_start_pos;
+                k[on_match as usize] = if on_match == 0 { data_start_pos + 1 } else { data_start_pos };
                 on_match -= 1;
             }
 
@@ -550,6 +547,7 @@ impl Hson {
         }
     }
 
+    // TODO: IMPROVE PERF
     /// Retrieve the previous opened node from the provided node position
     fn get_previous_opened_node (&self, node_start_pos: usize, skip_primitives: bool, kind: &Kind) -> Result<String, Error> {
         let nodes = &self.nodes;
@@ -666,10 +664,8 @@ impl Hson {
     }
 
     /// Insert hson slice nodes into existing nodes
-    fn insert_into_nodes (&mut self, parent_id: String, start_idx: usize, mut hson: Hson) -> Hson {
+    fn insert_into_nodes (&mut self, parent_id: String, start_idx: usize, mut insert_pos: usize, mut hson: Hson) -> Hson {
         let mut root_id = String::from("");
-        let mut pos = start_idx;
-        let mut previous_key = [0, 0];
 
         for (_i, key) in hson.indexes.iter().enumerate() {
             match hson.nodes.remove_entry(key) {
@@ -681,29 +677,25 @@ impl Hson {
                         if node.parent == root_id {
                             node.parent = parent_id.clone();
                             match self.nodes.get_mut(&parent_id) {
-                                Some(n) => n.childs.push(node.id.clone()),
+                                Some(n) => {
+                                    n.childs.insert(insert_pos, node.id.clone());
+                                    insert_pos += 1;
+                                },
                                 None => {}
                             }
                         }
 
-                        let key_diff = node.key[1] - node.key[0];
-                        let value_diff = node.value[1] - node.value[0];
-
-                        if previous_key[1] > 0 {
-                            pos += node.key[0] - previous_key[1];
+                        // Replace key and value position
+                        if node.key != [0, 0] {
+                            node.key[0] += start_idx - 1;
+                            node.key[1] += start_idx - 1;
                         }
 
-                        previous_key = node.key;
-
-                        // Replace key and value position
-                        node.key[0] = pos;
-                        node.key[1] = node.key[0] + key_diff;
-                        node.value[0] = node.key[1] + 2;
-                        node.value[1] = node.value[0] + value_diff;
-                        pos = node.key[1];
+                        node.value[0] += start_idx - 1;
+                        node.value[1] += start_idx - 1;
 
                         let idx = node.instance as usize;
-                        self.indexes.insert(idx, key.clone());
+                        self.indexes.insert(idx - 1, key.clone());
                         self.nodes.insert(k, node);
                     }
                 },
@@ -715,45 +707,36 @@ impl Hson {
     }
 
     /// Insert hson slice nodes into existing cache
-    fn insert_into_cache (&mut self, mut hson: Hson) -> Hson {
-//        let keys = hson.cache.keys();
-//        let mut inserted = Vec::new();
-//
-//        for key in keys {
-//            match hson.cache.get_mut(key) {
-//                Some(hson_cache) => {
-//
-//                    match self.cache.get_mut(key) {
-//                        Some(self_cache) => {
-//
-//                            for hson_uid in hson_cache {
-//                                match hson.nodes.get(hson_uid) {
-//                                    Some(hson_node) => {
-//
-//                                        for (idx, self_uid) in self_cache.iter().enumerate() {
-//                                            match self.nodes.get(self_uid) {
-//                                                Some(self_node) => {
-//                                                    if self_node.instance > hson_node.instance && !inserted.contains(hson_uid) {
-//                                                        self_cache.insert(idx, hson_uid.clone());
-//                                                        inserted.push(hson_uid.clone());
-//                                                    }
-//                                                },
-//                                                None => {}
-//                                            }
-//                                        }
-//                                    },
-//                                    None => {}
-//                                }
-//                            }
-//                        },
-//                        None => {
-//                            self.cache.insert(key.clone(), hson_cache.clone());
-//                        }
-//                    }
-//                },
-//                None => {}
-//            }
-//        }
+    fn insert_into_cache (&mut self, hson: Hson) -> Hson {
+        let keys = hson.cache.keys();
+        let mut hson_cache_copy = hson.cache.clone();
+
+        for key in keys {
+            match hson_cache_copy.get_mut(key) {
+                Some(mut hson_cache) => {
+
+                    match self.cache.get_mut(key) {
+                        Some(self_cache) => {
+                            self_cache.append(&mut hson_cache);
+
+                            let nodes = self.nodes.clone();
+                            self_cache.sort_by(|a, b| {
+                                let first = nodes.get(a).unwrap();
+                                let second = nodes.get(b).unwrap();
+
+                                first.instance.cmp(&second.instance)
+                            });
+                        },
+                        None => {
+                            self.cache.insert(key.clone(), hson_cache.clone());
+                        }
+                    }
+                },
+                None => {}
+            }
+        }
+
+
 
         hson
     }
@@ -843,25 +826,25 @@ impl Hson {
     }
 
     /// Remove a node from the cache
-    fn remove_from_cache (&mut self, uid: &str) {
-//        let keys = self.cache.keys();
-//
-//        for key in keys {
-//            match self.cache.get_mut(key) {
-//                Some(v) => {
-//                    let mut to_remove = -1;
-//                    for (idx, id) in v.iter().enumerate() {
-//                        if id == uid {
-//                            to_remove = idx as i32;
-//                            break;
-//                        }
-//                    }
-//
-//                    v.remove(to_remove as usize);
-//                },
-//                None => {}
-//            }
-//        }
+    fn remove_from_cache (&mut self, key: &str, node_id: &str) {
+        match self.cache.get_mut(key) {
+            Some(v) => {
+                let mut to_remove = -1;
+                for (idx, id) in v.iter().enumerate() {
+                    if id == node_id {
+                        to_remove = idx as i32;
+                        break;
+                    }
+                }
+
+                v.remove(to_remove as usize);
+
+                if v.len() == 0 {
+                    self.cache.remove_entry(key);
+                }
+            },
+            None => {}
+        }
     }
 
     /// Left push existing nodes instance, key and value
@@ -1083,26 +1066,6 @@ impl Hson {
                         }
     }
 
-    fn fill_iterator (&mut self) {
-        self.vec_it.clear();
-        let mut previous_instance = self.instances - self.indexes.len() as u32;
-
-        loop {
-            for (key, _value) in &self.nodes {
-                let node = self.nodes.get(key).unwrap();
-
-                if node.instance == previous_instance + 1 {
-                    self.vec_it.push(node.id.clone());
-                    previous_instance += 1;
-                }
-            }
-
-            if previous_instance >= self.instances as u32 {
-                break;
-            }
-        }
-    }
-
     fn validate (&self) -> Result<(), Error> {
         for (_key, value) in &self.nodes {
             if value.opened {
@@ -1216,28 +1179,28 @@ pub trait Ops {
 
 impl Ops for Hson {
     /// Insert an hson slice
-    fn insert (&mut self, uid: &String, idx: usize, s: &str) -> Result<(), Error> {
+    fn insert (&mut self, node_id: &String, insert_pos: usize, data_to_insert: &str) -> Result<(), Error> {
         let mut slice_range = 0;
 
-        match self.nodes.get(uid) {
+        match self.nodes.get(node_id) {
             Some(node) => {
-                let mut t = self.clean(&s);
+                let mut t = self.clean(&data_to_insert);
                 // Start instances count (for new_slice method) at the provided node instance number
                 // Subtract 1 to take care of the root instance in the new hson slice
                 let mut start_instance = node.instance - 1;
                 // From what instance the existing nodes should be pushed to the right
                 let mut start = node.instance + 1;
                 // From what position should the new slice should be inserted in the existing data
-                let mut start_idx = node.value[0] + 1;
+                let mut start_idx = node.value[0];
                 let parent_id = node.id.clone();
 
                 // If the inserting position in the node's childs is not the first one,
                 // retrieve the new position based on the child values
-                if idx > 0 {
-                    let child_uid = match node.childs.get(idx - 1) {
+                if insert_pos > 0 {
+                    let child_uid = match node.childs.get(insert_pos - 1) {
                         Some(id) => id,
                         None => {
-                            let e = Error::new(ErrorKind::InvalidData, format!("Invalid index {}", idx));
+                            let e = Error::new(ErrorKind::InvalidData, format!("Invalid index {}", insert_pos));
                             return Err(e);
                         }
                     };
@@ -1267,9 +1230,9 @@ impl Ops for Hson {
                 if node.childs.len() > 0 {
                     // Insert a comma if the inserting position is not the last one and there's not already one
                     // When inserting in the middle of childs add the comma and push the position of all following nodes
-                    if idx < node.childs.len() && t[t.len() - 2] != COMMA {
+                    if insert_pos < node.childs.len() && t[t.len() - 2] != COMMA {
                         t.insert(t.len() - 1, ',');
-                    } else if idx >= node.childs.len() {
+                    } else if insert_pos >= node.childs.len() {
                         let last_child_uid = node.childs[node.childs.len() - 1].clone();
                         let current_uid = node.id.clone();
                         self.insert_comma(last_child_uid, current_uid);
@@ -1299,26 +1262,24 @@ impl Ops for Hson {
 
                 self.right_push_instances(start, distance, data_size)?;
                 hson = self.insert_into_data(hson, start_idx);
-                hson = self.insert_into_nodes(parent_id, start_idx, hson);
+                hson = self.insert_into_nodes(parent_id, start_idx, insert_pos,hson);
                 hson = self.insert_into_cache(hson);
             },
             None => {
-                let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", uid));
+                let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", node_id));
                 return Err(e);
             }
         };
 
-        match self.nodes.get_mut(uid) {
+        match self.nodes.get_mut(node_id) {
             Some(node) => {
                 node.value[1] += slice_range;
             },
             None => {}
         };
 
-        self.fill_iterator();
-
         match self.callback {
-            Some(c) => c(Event::Insert, uid.clone()),
+            Some(c) => c(Event::Insert, node_id.clone()),
             None => {}
         }
 
@@ -1326,37 +1287,52 @@ impl Ops for Hson {
     }
 
     /// Remove a node and all its childs
-    fn remove (&mut self, uid: &String) -> Result<(), Error> {
-        match self.nodes.get(uid) {
+    fn remove (&mut self, node_id: &String) -> Result<(), Error> {
+        match self.nodes.get(node_id) {
             Some(node) => {
-                let childs = self.get_all_childs(uid)?;
+                let key = self.get_node_key(node);
+                let childs = self.get_all_childs(node_id)?;
                 let instances_range = childs.len() + 1;
                 let start_instance = node.instance + childs.len() as u32 + 1;
                 let parent_id = node.parent.clone();
                 let data_start_pos = node.key[0];
                 let mut data_end_pos = node.value[1] + 1;
-                let mut data_size = node.value[1] - node.key[0] + 1;
+                let mut data_size = node.value[1] - node.key[0];
 
                 if self.data[data_end_pos] == COMMA {
                     data_end_pos += 1;
                     data_size += 1;
                 }
 
+                if !key.is_empty() {
+                    self.remove_from_cache(&key, node_id);
+                }
+
+                for child in childs {
+                    match self.nodes.get(&child) {
+                        Some(n) => {
+                            let key = self.get_node_key(n);
+
+                            if !key.is_empty() {
+                                self.remove_from_cache(&key, &child);
+                            }
+                        },
+                        None => {}
+                    }
+                }
+
                 self.left_push_instances(start_instance, instances_range as u32, data_size)?;
                 self.remove_from_data(data_start_pos, data_end_pos);
-                self.remove_from_nodes(&parent_id, uid);
-                self.remove_from_cache(uid);
+                self.remove_from_nodes(&parent_id, node_id);
             },
             None => {
-                let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", uid));
+                let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", node_id));
                 return Err(e);
             }
         }
 
-        self.fill_iterator();
-
         match self.callback {
-            Some(c) => c(Event::Remove, uid.clone()),
+            Some(c) => c(Event::Remove, node_id.clone()),
             None => {}
         }
 
@@ -1571,41 +1547,43 @@ impl Debug for Hson {
                 let in_string = self.controls.double_quotes > 0 && c != DOUBLE_QUOTES && previous != '\\';
                 let in_array = self.controls.square_brackets > 0;
 
-                match self.controls.chars.iter().position(|&s| s == c && !in_string) {
-                    Some(_) => {
-                        match c {
-                            OPEN_CURLY => {
-                                print!("{}", c);
-                                indent += 1;
-                                print!("\n");
-                                for _t in 0..indent {
-                                    print!("\t");
-                                }
-                            },
-                            CLOSE_CURLY => {
-                                indent -= 1;
-                                print!("\n");
-                                for _t in 0..indent {
-                                    print!("\t");
-                                }
-                                print!("{}", c);
-                            },
-                            COMMA => {
-                                print!("{}", c);
-                                if !in_array {
+                if !in_string {
+                    match self.controls.chars.iter().position(|&s| s == c) {
+                        Some(_) => {
+                            match c {
+                                OPEN_CURLY => {
+                                    print!("{}", c);
+                                    indent += 1;
                                     print!("\n");
                                     for _t in 0..indent {
                                         print!("\t");
                                     }
+                                },
+                                CLOSE_CURLY => {
+                                    indent -= 1;
+                                    print!("\n");
+                                    for _t in 0..indent {
+                                        print!("\t");
+                                    }
+                                    print!("{}", c);
+                                },
+                                COMMA => {
+                                    print!("{}", c);
+                                    if !in_array {
+                                        print!("\n");
+                                        for _t in 0..indent {
+                                            print!("\t");
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    print!("{}", c);
                                 }
                             }
-                            _ => {
-                                print!("{}", c);
-                            }
+                        },
+                        None => {
+                            print!("{}", c);
                         }
-                    },
-                    None => {
-                        print!("{}", c);
                     }
                 }
 
@@ -1681,6 +1659,7 @@ impl Search for Hson {
             }
         }
 
+        // TODO: IMPROVE SEARCH TO AVOID DUPLICATE ENTRIES
         results = self.unique(&results);
 
         Ok(results)
@@ -1869,6 +1848,7 @@ impl SearchUtils for Hson {
                 Some(node) => {
                     for pattern in &patterns {
                         let value = self.get_node_value(node);
+                        println!("{}", &value);
 
                         if value == pattern.trim() {
                             results.push(res.clone());
@@ -1888,11 +1868,12 @@ impl Iterator for Hson {
     type Item = String;
 
     fn next (&mut self) -> Option<String> {
-        if !self.vec_it.is_empty() {
-            let id = self.vec_it.remove(0);
+        if !self.indexes.is_empty() && self.iter_count < self.indexes.len() {
+            let id = self.indexes[self.iter_count].clone();
+            self.iter_count += 1;
             Some(id)
         } else {
-            self.fill_iterator();
+            self.iter_count = 0;
             None
         }
     }
