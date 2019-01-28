@@ -24,6 +24,22 @@ lazy_static! {
 
         data
     };
+
+    static ref NUM_DATA: String = {
+        let mut data = String::new();
+        let mut file = File::open("tests/samples/num.hson").unwrap();
+        file.read_to_string(&mut data).unwrap();
+
+        data
+    };
+
+    static ref SIMPLE_DATA: String = {
+        let mut data = String::new();
+        let mut file = File::open("tests/samples/simple.hson").unwrap();
+        file.read_to_string(&mut data).unwrap();
+
+        data
+    };
 }
 
 #[test]
@@ -50,11 +66,35 @@ fn cant_parse () {
 }
 
 #[test]
-fn has_nodes_number () {
+fn has_nodes_number_simple () {
+    let mut hson = Hson::new();
+    hson.parse(&SIMPLE_DATA).unwrap();
+
+    assert_eq!(hson.indexes.len(), 6);
+}
+
+#[test]
+fn has_nodes_number_small () {
     let mut hson = Hson::new();
     hson.parse(&SHORT_DATA).unwrap();
 
     assert_eq!(hson.indexes.len(), 25);
+}
+
+#[test]
+fn has_nodes_number_num () {
+    let mut hson = Hson::new();
+    hson.parse(&NUM_DATA).unwrap();
+
+    assert_eq!(hson.indexes.len(), 47);
+}
+
+#[test]
+fn has_nodes_number_long () {
+    let mut hson = Hson::new();
+    hson.parse(&LONG_DATA).unwrap();
+
+    assert_eq!(hson.indexes.len(), 295);
 }
 
 #[test]
@@ -106,7 +146,7 @@ fn query_retrieve_in_node_only () {
 }
 
 #[test]
-fn search () {
+fn search_on_small () {
     let mut hson = Hson::new();
     hson.parse(&SHORT_DATA).unwrap();
 
@@ -124,9 +164,53 @@ fn search () {
 }
 
 #[test]
-fn insertion () {
+fn search_on_long () {
+    let mut hson = Hson::new();
+    hson.parse(&LONG_DATA).unwrap();
+
+    let results = hson.search("div").unwrap();
+    assert_eq!(results.len(), 7);
+
+    let results = hson.search("li>attrs").unwrap();
+    assert_eq!(results.len(), 17);
+}
+
+#[test]
+fn insertion_long () {
+    let mut hson = Hson::new();
+    hson.parse(&LONG_DATA).unwrap();
+
+    assert_eq!(hson.indexes.len(), 295);
+
+    let results = hson.search("li>attrs>id").unwrap();
+    assert_eq!(results.len(), 0);
+
+    let results = hson.search("li>attrs").unwrap();
+
+    let child = r#"{
+                        "class": ["active", "item"],
+                        "id": "my-id",
+                        "rel": {
+                            "name": "test",
+                            "id": "43526",
+                            "pos": 2
+                        }
+                    }"#;
+
+    assert_eq!(hson.insert(&results[0], 1, child).unwrap(), ());
+    assert_eq!(hson.indexes.len(), 303);
+    assert_eq!(hson.nodes.keys().len(), 303);
+
+    let results = hson.search("li>attrs>id").unwrap();
+    assert_eq!(results.len(), 1);
+}
+
+#[test]
+fn insertion_small () {
     let mut hson = Hson::new();
     hson.parse(&SHORT_DATA).unwrap();
+
+    assert_eq!(hson.indexes.len(), 25);
 
     let results = hson.query("div p attrs").unwrap();
     assert_eq!(results.len(), 1);
@@ -145,6 +229,8 @@ fn insertion () {
 fn deletion () {
     let mut hson = Hson::new();
     hson.parse(&SHORT_DATA).unwrap();
+
+    assert_eq!(hson.indexes.len(), 25);
 
     let results = hson.query("p").unwrap();
     assert_eq!(results.len(), 2);
