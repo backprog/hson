@@ -1540,18 +1540,19 @@ impl Debug for Hson {
             let previous = ' ';
             let mut indent = 0;
             let l = self.data.len() - 1;
+            let mut in_array = false;
 
             loop {
                 let c = self.data[i];
                 self.controls_count(&c, &previous);
                 let in_string = self.controls.double_quotes > 0 && c != DOUBLE_QUOTES && previous != '\\';
-                let in_array = self.controls.square_brackets > 0;
 
                 if !in_string {
                     match self.controls.chars.iter().position(|&s| s == c) {
                         Some(_) => {
                             match c {
                                 OPEN_CURLY => {
+                                    in_array = false;
                                     print!("{}", c);
                                     indent += 1;
                                     print!("\n");
@@ -1565,6 +1566,14 @@ impl Debug for Hson {
                                     for _t in 0..indent {
                                         print!("\t");
                                     }
+                                    print!("{}", c);
+                                },
+                                OPEN_ARR => {
+                                    in_array = true;
+                                    print!("{}", c);
+                                },
+                                CLOSE_ARR => {
+                                    in_array = false;
                                     print!("{}", c);
                                 },
                                 COMMA => {
@@ -1585,6 +1594,8 @@ impl Debug for Hson {
                             print!("{}", c);
                         }
                     }
+                } else {
+                    print!("{}", c);
                 }
 
                 i += 1;
