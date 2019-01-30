@@ -40,12 +40,26 @@ lazy_static! {
 
         data
     };
+
+    static ref HTML_DATA: String = {
+        let mut data = String::new();
+        let mut file = File::open("tests/samples/html-1.hson").unwrap();
+        file.read_to_string(&mut data).unwrap();
+
+        data
+    };
 }
 
 #[test]
 fn can_parse () {
     let mut hson = Hson::new();
     assert_eq!(hson.parse(&SHORT_DATA).unwrap(), ());
+}
+
+#[test]
+fn can_parse_uri () {
+    let mut hson = Hson::new();
+    assert_eq!(hson.parse(&HTML_DATA).unwrap(), ());
 }
 
 #[test]
@@ -173,6 +187,20 @@ fn search_on_long () {
 
     let results = hson.search("li>attrs").unwrap();
     assert_eq!(results.len(), 17);
+}
+
+#[test]
+fn search_in_node () {
+    let mut hson = Hson::new();
+    hson.parse(&LONG_DATA).unwrap();
+
+    let results = hson.search("p>attrs").unwrap();
+    let ids = hson.search_in(&results[1], "id").unwrap();
+
+    assert_eq!(ids.len(), 1);
+
+    let vertex = hson.get_vertex(&ids[0]).unwrap();
+    assert_eq!(vertex.value_as_string().unwrap(), "test-2");
 }
 
 #[test]

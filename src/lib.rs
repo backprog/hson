@@ -157,9 +157,9 @@ impl Hson {
             in_string = self.controls.double_quotes > 0 && c != DOUBLE_QUOTES && previous != '\\';
             string_just_closed = self.controls.double_quotes > 0 && c == DOUBLE_QUOTES && previous != '\\';
 
-//            println!("CHAR: {}", &c);
-//            println!("IN_STRING: {}", &in_string);
-//            println!("STRING CLOSED: {}", &string_just_closed);
+            println!("CHAR: {}", &c);
+            println!("IN_STRING: {}", &in_string);
+            println!("STRING CLOSED: {}", &string_just_closed);
 
             if !in_string {
                 match self.controls.chars.iter().position(|&s| s == c) {
@@ -187,7 +187,7 @@ impl Hson {
                     }
                 };
 
-//                println!("KIND {:?}", &kind);
+                println!("KIND {:?}", &kind);
 
                 match &kind {
                     &Kind::Bool |
@@ -207,7 +207,7 @@ impl Hson {
                             false
                         } else {
                             let is_before = self.is_before_colons(i, &data);
-//                            println!("BEFORE COLONS {}", &is_before);
+                            println!("BEFORE COLONS {}", &is_before);
 
                             !is_before
                         }
@@ -215,7 +215,7 @@ impl Hson {
                     _ => true
                 };
 
-//                println!("INSERT {}", &insert);
+                println!("INSERT {}", &insert);
 
                 if insert {
                     let uid = Uuid::new_v4().to_string();
@@ -298,7 +298,7 @@ impl Hson {
                     }
                 };
 
-//                println!("CLOSE {}", &close);
+                println!("CLOSE {}", &close);
 
                 if close {
                     match &kind {
@@ -609,10 +609,10 @@ impl Hson {
                 break;
             }
 
-            if data[data_start_pos] == ':' { return true; }
+            if data[data_start_pos] == COLONS && data[data_start_pos - 1] == DOUBLE_QUOTES { return true; }
 
             if data[data_start_pos] == DOUBLE_QUOTES && data[data_start_pos - 1] != '\\' {
-                return data[data_start_pos + 1] == ':';
+                return data[data_start_pos + 1] == COLONS;
             }
         }
 
@@ -1644,6 +1644,8 @@ impl Debug for Hson {
 
 pub trait Search {
     fn search (&mut self, query: &str) -> Result<Vec<String>, Error>;
+
+    fn search_in (&mut self, node_id: &str, query: &str) -> Result<Vec<String>, Error>;
 }
 
 impl Search for Hson {
@@ -1660,6 +1662,29 @@ impl Search for Hson {
 
         // Add the root node in the results list for first lookup
         results.push(root_id);
+        for part in q {
+            if part.contains(">") {
+                results = self.find_childs(&part, &results, first)?;
+            } else if part.contains("|") {
+                results = self.find_multiple_childs(&part, &results)?;
+            } else {
+                results = self.find_descendants(&part, &results)?;
+            }
+        }
+
+        // TODO: IMPROVE SEARCH TO AVOID DUPLICATE ENTRIES
+        results = self.unique(&results);
+
+        Ok(results)
+    }
+
+    fn search_in (&mut self, node_id: &str, query: &str) -> Result<Vec<String>, Error> {
+        let mut results = Vec::new();
+        let q = self.format_query(query);
+        let first = true;
+
+        // Add the root node in the results list for first lookup
+        results.push(node_id.to_string());
         for part in q {
             if part.contains(">") {
                 results = self.find_childs(&part, &results, first)?;

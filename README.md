@@ -8,8 +8,7 @@ The parser can be used for other purposes, but its main goal is to represent a H
 
 ## Usage
    [Parsing](#Parsing)  
-   [Stringifying](#Stringifying)  
-   [Querying](#Querying)  
+   [Stringifying](#Stringifying)   
    [Searching](#Searching)  
    [Inserting](#Inserting)  
    [Removing](#Removing)  
@@ -60,48 +59,8 @@ let s = hson.stringify();
 println!("{}", &s);
 ```
 
-### Querying
-#### Find matching nodes
-Querying works as the javascript querySelectorAll method but without the 'CSS' features.  
-(Queries improvement is planned).
-```rust
-use hson::{ Hson, Query };
-  
-...
-  
-// Get node's identifiers for easier processing
-let results = hson.query("div p").unwrap();
-println!("\n{:?}\n", results);
-  
-// Get node's reference
-let results = hson.query_nodes("div p").unwrap();
-println!("\n{:?}\n", results);
-  
-// Recursive search in a node
-let results = hson.query_on(&uid, "div p", true).unwrap();
-println!("\n{:?}\n", results);
-  
-// Non recursive search in a node
-let results = hson.query_on(&uid, "attrs", false).unwrap();
-println!("\n{:?}\n", results);
-  
-// Recursive search in a node and get node's reference
-let results = hson.query_on_nodes(&node, "div p", true).unwrap();
-println!("\n{:?}\n", results);
-  
-// Non recursive search in a node and get node's reference
-let results = hson.query_on_nodes(&node, "attrs", false).unwrap();
-println!("\n{:?}\n", results);
-  
-// Get node key
-let key = hson.get_node_key(&node);
-  
-// Get node value
-let value = hson.get_node_value(&node);
-```
-
 ### Searching
-Search allow easier querying.
+Searching works as the javascript querySelectorAll method.  
 ```rust
 use hson::{ Hson, Query, Search };
   
@@ -125,6 +84,10 @@ println!("\n{:?}\n", results);
   
 // All those features can be combined
 let results = hson.search("div>p attrs id='12'|rate='3'|trusted").unwrap();
+println!("\n{:?}\n", results);
+  
+// Look for childs in a specific node
+let results = hson.search_in(&node_id, "div>p").unwrap();
 println!("\n{:?}\n", results);
 ```
 
