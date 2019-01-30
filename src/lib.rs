@@ -157,9 +157,9 @@ impl Hson {
             in_string = self.controls.double_quotes > 0 && c != DOUBLE_QUOTES && previous != '\\';
             string_just_closed = self.controls.double_quotes > 0 && c == DOUBLE_QUOTES && previous != '\\';
 
-            println!("CHAR: {}", &c);
-            println!("IN_STRING: {}", &in_string);
-            println!("STRING CLOSED: {}", &string_just_closed);
+//            println!("CHAR: {}", &c);
+//            println!("IN_STRING: {}", &in_string);
+//            println!("STRING CLOSED: {}", &string_just_closed);
 
             if !in_string {
                 match self.controls.chars.iter().position(|&s| s == c) {
@@ -187,7 +187,7 @@ impl Hson {
                     }
                 };
 
-                println!("KIND {:?}", &kind);
+//                println!("KIND {:?}", &kind);
 
                 match &kind {
                     &Kind::Bool |
@@ -207,7 +207,7 @@ impl Hson {
                             false
                         } else {
                             let is_before = self.is_before_colons(i, &data);
-                            println!("BEFORE COLONS {}", &is_before);
+//                            println!("BEFORE COLONS {}", &is_before);
 
                             !is_before
                         }
@@ -215,7 +215,7 @@ impl Hson {
                     _ => true
                 };
 
-                println!("INSERT {}", &insert);
+//                println!("INSERT {}", &insert);
 
                 if insert {
                     let uid = Uuid::new_v4().to_string();
@@ -298,7 +298,7 @@ impl Hson {
                     }
                 };
 
-                println!("CLOSE {}", &close);
+//                println!("CLOSE {}", &close);
 
                 if close {
                     match &kind {
@@ -1884,7 +1884,6 @@ impl SearchUtils for Hson {
                 Some(node) => {
                     for pattern in &patterns {
                         let value = self.get_node_value(node);
-                        println!("{}", &value);
 
                         if value == pattern.trim() {
                             results.push(res.clone());
