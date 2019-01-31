@@ -108,7 +108,7 @@ let child = r#"{
                     }
                 }"#;
   
-hson.insert(&results[0], 1, child).unwrap();
+hson.insert(results[0], 1, child).unwrap();
 hson.print_data(true);
 ```
 
@@ -120,7 +120,7 @@ use hson::{ Hson, Query, Ops, Debug };
   
 let results = hson.query("p").unwrap();
 
-hson.remove(&results[0]).unwrap();
+hson.remove(results[0]).unwrap();
 hson.print_data(true);
 ```
 
@@ -169,7 +169,7 @@ use hson::{ Hson, Ops, Event };
   
 ...
   
-fn on_event (evt: Event, uid: String) {
+fn on_event (evt: Event, uid: u64) {
     println!("\nEVENT : {:?} on {}\n", evt, uid);
 }
   
@@ -188,7 +188,7 @@ use hson::{ Hson, Query, Search, Cast };
 ...
   
 let results = hson.search("div attrs class").unwrap();
-let vertex = hson.get_vertex(&results[0]).unwrap();
+let vertex = hson.get_vertex(results[0]).unwrap();
   
 // Get vertex value as u64
 println!("{}", vertex.value_as_f64());

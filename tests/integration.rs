@@ -143,7 +143,7 @@ fn query_retrieve_in_node () {
     hson.parse(&SHORT_DATA).unwrap();
 
     let results = hson.query("div p").unwrap();
-    let childs_results = hson.query_on(&results[0], "span", true).unwrap();
+    let childs_results = hson.query_on(results[0], "span", true).unwrap();
 
     assert_eq!(childs_results.len(), 1);
 }
@@ -154,7 +154,7 @@ fn query_retrieve_in_node_only () {
     hson.parse(&SHORT_DATA).unwrap();
 
     let results = hson.query("div").unwrap();
-    let childs_results = hson.query_on(&results[0], "attrs", false).unwrap();
+    let childs_results = hson.query_on(results[0], "attrs", false).unwrap();
 
     assert_eq!(childs_results.len(), 1);
 }
@@ -195,11 +195,11 @@ fn search_in_node () {
     hson.parse(&LONG_DATA).unwrap();
 
     let results = hson.search("p>attrs").unwrap();
-    let ids = hson.search_in(&results[1], "id").unwrap();
+    let ids = hson.search_in(results[1], "id").unwrap();
 
     assert_eq!(ids.len(), 1);
 
-    let vertex = hson.get_vertex(&ids[0]).unwrap();
+    let vertex = hson.get_vertex(ids[0]).unwrap();
     assert_eq!(vertex.value_as_string().unwrap(), "test-2");
 }
 
@@ -225,7 +225,7 @@ fn insertion_long () {
                         }
                     }"#;
 
-    assert_eq!(hson.insert(&results[0], 1, child).unwrap(), ());
+    assert_eq!(hson.insert(results[0], 1, child).unwrap(), ());
     assert_eq!(hson.indexes.len(), 303);
     assert_eq!(hson.nodes.keys().len(), 303);
 
@@ -248,7 +248,7 @@ fn insertion_small () {
                         "name": "foo"
                     }"#;
 
-    assert_eq!(hson.insert(&results[0], 0, child).unwrap(), ());
+    assert_eq!(hson.insert(results[0], 0, child).unwrap(), ());
     assert_eq!(hson.indexes.len(), 29);
     assert_eq!(hson.nodes.keys().len(), 29);
 }
@@ -263,7 +263,7 @@ fn deletion () {
     let results = hson.query("p").unwrap();
     assert_eq!(results.len(), 2);
 
-    assert_eq!(hson.remove(&results[0]).unwrap(), ());
+    assert_eq!(hson.remove(results[0]).unwrap(), ());
     assert_eq!(hson.indexes.len(), 17);
     assert_eq!(hson.nodes.keys().len(), 17);
 }
@@ -274,7 +274,7 @@ fn vertex () {
     hson.parse(&SHORT_DATA).unwrap();
 
     let results = hson.query("div attrs class").unwrap();
-    let class = hson.get_vertex(&results[0]).unwrap();
+    let class = hson.get_vertex(results[0]).unwrap();
     let values = class.value_as_array().unwrap();
 
     assert_eq!(values.len(), 4);
@@ -290,18 +290,18 @@ fn vertex_cast () {
     hson.parse(&SHORT_DATA).unwrap();
 
     let results = hson.query("div p attrs").unwrap();
-    let attributes = hson.query_on(&results[0], "id", false).unwrap();
-    let id = hson.get_vertex(&attributes[0]).unwrap();
+    let attributes = hson.query_on(results[0], "id", false).unwrap();
+    let id = hson.get_vertex(attributes[0]).unwrap();
 
     assert_eq!(id.value_as_u64(), Some(12));
 
-    let attributes = hson.query_on(&results[0], "rate", false).unwrap();
-    let rate = hson.get_vertex(&attributes[0]).unwrap();
+    let attributes = hson.query_on(results[0], "rate", false).unwrap();
+    let rate = hson.get_vertex(attributes[0]).unwrap();
 
     assert_eq!(rate.value_as_f64(), Some(0.4321));
 
-    let attributes = hson.query_on(&results[0], "trusted", false).unwrap();
-    let trusted = hson.get_vertex(&attributes[0]).unwrap();
+    let attributes = hson.query_on(results[0], "trusted", false).unwrap();
+    let trusted = hson.get_vertex(attributes[0]).unwrap();
 
     assert_eq!(trusted.value_as_bool(), Some(true));
 }

@@ -14,7 +14,6 @@ exclude = [
 ]
 
 [dependencies]
-uuid = { version = "0.7.1", features = ["v4"] }
 
 [dev-dependencies]
 lazy_static = "1.2.0"
