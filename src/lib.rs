@@ -237,7 +237,7 @@ impl Hson {
                     self.nodes.insert(self.id_count, Node {
                         root,
                         kind: kind.clone(),
-                        parent: parent.clone(),
+                        parent,
                         childs: Vec::new(),
                         key,
                         value,
@@ -630,7 +630,7 @@ impl Hson {
                 } else {
                     // Insert the node into its new parent node
                     if node.parent == root_id {
-                        node.parent = parent_id.clone();
+                        node.parent = parent_id;
                         if let Some(n) = self.nodes.get_mut(&parent_id) {
                             n.childs.insert(insert_pos, node.id);
                             insert_pos += 1;
@@ -1027,7 +1027,7 @@ impl Query for Hson {
         for uid in ids {
             if recursive {
                 if self.is_descendant(node_id, uid) {
-                    results.push(uid.clone());
+                    results.push(uid);
                 }
             } else if let Some(n) = self.nodes.get(&uid) {
                 if n.parent == node_id {
@@ -1083,7 +1083,7 @@ impl Ops for Hson {
                 let mut start = node.instance + 1;
                 // From what position should the new slice should be inserted in the existing data
                 let mut start_idx = node.value[0];
-                let parent_id = node.id.clone();
+                let parent_id = node.id;
 
                 // If the inserting position in the node's childs is not the first one,
                 // retrieve the new position based on the child values
@@ -1124,8 +1124,8 @@ impl Ops for Hson {
                     if insert_pos < node.childs.len() && t[t.len() - 2] != COMMA {
                         t.insert(t.len() - 1, ',');
                     } else if insert_pos >= node.childs.len() {
-                        let last_child_uid = node.childs[node.childs.len() - 1].clone();
-                        let current_uid = node.id.clone();
+                        let last_child_uid = node.childs[node.childs.len() - 1];
+                        let current_uid = node.id;
                         self.insert_comma(last_child_uid, current_uid);
                         start_idx += 1;
                     }
@@ -1180,7 +1180,7 @@ impl Ops for Hson {
                 let childs = self.get_all_childs(node_id)?;
                 let instances_range = childs.len() + 1;
                 let start_instance = node.instance + childs.len() as u64 + 1;
-                let parent_id = node.parent.clone();
+                let parent_id = node.parent;
                 let data_start_pos = node.key[0];
                 let mut data_end_pos = node.value[1] + 1;
                 let mut data_size = node.value[1] - node.key[0];
