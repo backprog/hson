@@ -141,194 +141,196 @@ impl Hson {
         let l = data.len();
         let mut i = 0;
 
-        loop {
-            let c = data[i];
-
+        if l > 0 {
             // If structure does not start with curly bracket throw error
-            if i == 0 && c != OPEN_CURLY {
+            if data[0] != OPEN_CURLY {
                 let e = Error::new(ErrorKind::InvalidData, "Invalid character at 0");
                 return Err(e);
             }
 
-            in_string = self.controls.double_quotes > 0 && c != DOUBLE_QUOTES && previous != BACKSLASH;
-            string_just_closed = self.controls.double_quotes > 0 && c == DOUBLE_QUOTES && previous != BACKSLASH;
+            loop {
+                let c = data[i];
+
+                in_string = self.controls.double_quotes > 0 && c != DOUBLE_QUOTES && previous != BACKSLASH;
+                string_just_closed = self.controls.double_quotes > 0 && c == DOUBLE_QUOTES && previous != BACKSLASH;
 
 //            println!("CHAR: {}", &c);
 //            println!("IN_STRING: {}", &in_string);
 //            println!("STRING CLOSED: {}", &string_just_closed);
 
-            if !in_string && self.controls.chars.iter().any(|&s| s == c) {
-                self.controls_count(c, previous);
+                if !in_string && self.controls.chars.iter().any(|&s| s == c) {
+                    self.controls_count(c, previous);
 
-                if skip {
-                    skip = false;
+                    if skip {
+                        skip = false;
+                    }
                 }
-            }
 
 //            println!("SKIP {}", &skip);
 
-            if !in_string && !skip {
-                let kind = match c {
-                    CLOSE_CURLY => Kind::Null,
-                    CLOSE_ARR => Kind::Null,
-                    COMMA => Kind::Null,
-                    COLONS => Kind::Null,
-                    _ => {
-                        self.get_node_kind(i, &data)?
-                    }
-                };
+                if !in_string && !skip {
+                    let kind = match c {
+                        CLOSE_CURLY => Kind::Null,
+                        CLOSE_ARR => Kind::Null,
+                        COMMA => Kind::Null,
+                        COLONS => Kind::Null,
+                        _ => {
+                            self.get_node_kind(i, &data)?
+                        }
+                    };
 
 //                println!("KIND {:?}", &kind);
 
-                match kind {
-                    Kind::Bool |
-                    Kind::Integer |
-                    Kind::Float => {
-                        skip = true;
-                    },
-                    _ => {}
-                }
-
-                let insert = match kind {
-                    Kind::Null => {
-                        false
-                    },
-                    Kind::String => {
-                        if string_just_closed {
-                            false
-                        } else {
-                            let is_before = self.is_before_colons(i, &data);
-//                            println!("BEFORE COLONS {}", &is_before);
-
-                            !is_before
-                        }
-                    },
-                    _ => true
-                };
-
-//                println!("INSERT {}", &insert);
-
-                if insert {
-                    let root = i == 0;
-                    let parent = if root { 0 } else {
-                        self.get_previous_opened_node(self.indexes.len(), true, &Kind::Null)?
-                    };
-                    let parent_is_array = self.node_is_array(parent);
-
-//                    println!("PARENT ARRAY {}", &parent_is_array);
-
-                    let key = if root || parent_is_array { [0, 0] } else {
-                        self.get_node_key_position(i, &data)?
-                    };
-                    let value = if root { [i, data.len()] } else {
-                        match kind {
-                            Kind::Bool |
-                            Kind::Integer |
-                            Kind::Float => [i, data.len()],
-                            _ => [i + 1, data.len()]
-                        }
-
-                    };
-
-                    // Insert the new node
-                    self.id_count += 1;
-                    self.instances += 1;
-                    self.indexes.push(self.id_count);
-                    self.nodes.insert(self.id_count, Node {
-                        root,
-                        kind: kind.clone(),
-                        parent,
-                        childs: Vec::new(),
-                        key,
-                        value,
-                        id: self.id_count,
-                        opened: true,
-                        instance: self.instances
-                    });
-
-                    if !root {
-                        if let Some(node) = self.nodes.get_mut(&parent) {
-                            node.childs.push(self.id_count);
-                        }
-
-                        // TODO: IMPROVE PERF
-                        if key != [0, 0] {
-                            let mut key_str = String::from("");
-                            for e in data.iter().take(key[1]).skip(key[0]) {
-                                key_str.push(e.clone());
-                            }
-                            self.caching(key_str, self.id_count);
-                        }
-                    }
-                }
-
-                let close = match kind {
-                    Kind::Bool |
-                    Kind::Integer |
-                    Kind::Float => true,
-                    _ => {
-                        match c {
-                            CLOSE_CURLY => true,
-                            CLOSE_ARR => true,
-                            DOUBLE_QUOTES => {
-                                if string_just_closed {
-                                    let is_before = self.is_before_colons(i, &data);
-//                                    println!("BEFORE COLONS {}", &is_before);
-
-                                    !is_before
-                                } else { false }
-                            },
-                            _ => false
-                        }
-                    }
-                };
-
-//                println!("CLOSE {}", &close);
-
-                if close {
                     match kind {
                         Kind::Bool |
                         Kind::Integer |
                         Kind::Float => {
-                            let v = self.extract_value(i, &data)?;
-                            let current_node_id = self.get_previous_opened_node(self.nodes.len(), false, &kind)?;
+                            skip = true;
+                        },
+                        _ => {}
+                    }
 
-                            if let Some(node) = self.nodes.get_mut(&current_node_id) {
-                                node.value[1] = i + v.len();
-                                node.opened = false;
+                    let insert = match kind {
+                        Kind::Null => {
+                            false
+                        },
+                        Kind::String => {
+                            if string_just_closed {
+                                false
+                            } else {
+                                let is_before = self.is_before_colons(i, &data);
+//                            println!("BEFORE COLONS {}", &is_before);
+
+                                !is_before
                             }
                         },
-                        _ => {
-                            let closing_kind = match c {
-                                CLOSE_CURLY => Kind::Node,
-                                CLOSE_ARR => Kind::Array,
-                                DOUBLE_QUOTES => Kind::String,
-                                _ => continue
-                            };
-                            let previous_node_id = self.get_previous_opened_node(self.nodes.len(), true, &closing_kind)?;
+                        _ => true
+                    };
 
-                            if let Some(node) = self.nodes.get_mut(&previous_node_id) {
-                                node.value[1] = i;
-                                node.opened = false;
+//                println!("INSERT {}", &insert);
+
+                    if insert {
+                        let root = i == 0;
+                        let parent = if root { 0 } else {
+                            self.get_previous_opened_node(self.indexes.len(), true, &Kind::Null)?
+                        };
+                        let parent_is_array = self.node_is_array(parent);
+
+//                    println!("PARENT ARRAY {}", &parent_is_array);
+
+                        let key = if root || parent_is_array { [0, 0] } else {
+                            self.get_node_key_position(i, &data)?
+                        };
+                        let value = if root { [i, data.len()] } else {
+                            match kind {
+                                Kind::Bool |
+                                Kind::Integer |
+                                Kind::Float => [i, data.len()],
+                                _ => [i + 1, data.len()]
+                            }
+
+                        };
+
+                        // Insert the new node
+                        self.id_count += 1;
+                        self.instances += 1;
+                        self.indexes.push(self.id_count);
+                        self.nodes.insert(self.id_count, Node {
+                            root,
+                            kind: kind.clone(),
+                            parent,
+                            childs: Vec::new(),
+                            key,
+                            value,
+                            id: self.id_count,
+                            opened: true,
+                            instance: self.instances
+                        });
+
+                        if !root {
+                            if let Some(node) = self.nodes.get_mut(&parent) {
+                                node.childs.push(self.id_count);
+                            }
+
+                            // TODO: IMPROVE PERF
+                            if key != [0, 0] {
+                                let mut key_str = String::from("");
+                                for e in data.iter().take(key[1]).skip(key[0]) {
+                                    key_str.push(e.clone());
+                                }
+                                self.caching(key_str, self.id_count);
+                            }
+                        }
+                    }
+
+                    let close = match kind {
+                        Kind::Bool |
+                        Kind::Integer |
+                        Kind::Float => true,
+                        _ => {
+                            match c {
+                                CLOSE_CURLY => true,
+                                CLOSE_ARR => true,
+                                DOUBLE_QUOTES => {
+                                    if string_just_closed {
+                                        let is_before = self.is_before_colons(i, &data);
+//                                    println!("BEFORE COLONS {}", &is_before);
+
+                                        !is_before
+                                    } else { false }
+                                },
+                                _ => false
+                            }
+                        }
+                    };
+
+//                println!("CLOSE {}", &close);
+
+                    if close {
+                        match kind {
+                            Kind::Bool |
+                            Kind::Integer |
+                            Kind::Float => {
+                                let v = self.extract_value(i, &data)?;
+                                let current_node_id = self.get_previous_opened_node(self.nodes.len(), false, &kind)?;
+
+                                if let Some(node) = self.nodes.get_mut(&current_node_id) {
+                                    node.value[1] = i + v.len();
+                                    node.opened = false;
+                                }
+                            },
+                            _ => {
+                                let closing_kind = match c {
+                                    CLOSE_CURLY => Kind::Node,
+                                    CLOSE_ARR => Kind::Array,
+                                    DOUBLE_QUOTES => Kind::String,
+                                    _ => continue
+                                };
+                                let previous_node_id = self.get_previous_opened_node(self.nodes.len(), true, &closing_kind)?;
+
+                                if let Some(node) = self.nodes.get_mut(&previous_node_id) {
+                                    node.value[1] = i;
+                                    node.opened = false;
+                                }
                             }
                         }
                     }
                 }
+
+                previous = c;
+                i += 1;
+
+                if i >= l {
+                    break;
+                }
             }
 
-            previous = c;
-            i += 1;
+            self.data = data;
+            self.validate()?;
 
-            if i >= l {
-                break;
+            if let Some(c) = self.callback {
+                c(Event::Parse, self.id_count);
             }
-        }
-
-        self.data = data;
-        self.validate()?;
-
-        if let Some(c) = self.callback {
-            c(Event::Parse, self.id_count);
         }
 
         Ok(())
