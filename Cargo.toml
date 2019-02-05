@@ -1,11 +1,11 @@
 [package]
 name = "hson"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["Backprog"]
 edition = "2018"
 homepage = "https://github.com/backprog/hson"
 repository = "https://github.com/backprog/hson.git"
-description = "JSON like format for HTML"
+description = "JSON like format for HTML. Allow querying the data through searching methods similar to client-side DOM queries methods"
 readme = "README.md"
 keywords = ["json", "html"]
 license-file = "LICENSE.txt"

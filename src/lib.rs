@@ -1645,7 +1645,7 @@ impl SearchUtils for Hson {
                 string_array.push(c);
             } else if c == '>' || c == '=' || c == '|' {
                 let l = string_array.len();
-                if string_array[l - 1] == ' ' {
+                if l > 0 && string_array[l - 1] == ' ' {
                     string_array.remove(l - 1);
                 }
 
@@ -1691,7 +1691,12 @@ impl SearchUtils for Hson {
 
     fn find_childs (&mut self, query: &str, existing: &Vec<u64>, mut first: bool) -> Result<Vec<u64>, Error> {
         let mut results = existing.clone();
-        let elements: Vec<&str> = query.split('>').collect();
+        let mut elements: Vec<&str> = query.split('>').collect();
+
+        if elements[0].is_empty() {
+            elements.remove(0);
+            first = false;
+        }
 
         // Loop on each element of the query
         for elm in elements {

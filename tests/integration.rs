@@ -1,8 +1,8 @@
-#[macro_use]
-extern crate lazy_static;
-
 use std::fs::File;
 use std::io::prelude::*;
+
+#[macro_use]
+extern crate lazy_static;
 
 extern crate hson;
 use hson::{ Hson, Query, Ops, Search, Cast };
@@ -44,6 +44,14 @@ lazy_static! {
     static ref HTML_DATA: String = {
         let mut data = String::new();
         let mut file = File::open("tests/samples/html-1.hson").unwrap();
+        file.read_to_string(&mut data).unwrap();
+
+        data
+    };
+
+    static ref NESTED_DATA: String = {
+        let mut data = String::new();
+        let mut file = File::open("tests/samples/nested.hson").unwrap();
         file.read_to_string(&mut data).unwrap();
 
         data
@@ -190,6 +198,20 @@ fn search_on_long () {
 }
 
 #[test]
+fn search_in_nested_array () {
+    let mut hson = Hson::new();
+    hson.parse(&NESTED_DATA).unwrap();
+
+    assert_eq!(hson.indexes.len(), 7);
+
+    let results = hson.search("p b").unwrap();
+    assert_eq!(results.len(), 2);
+
+    let results = hson.search("div>b").unwrap();
+    assert_eq!(results.len(), 0);
+}
+
+#[test]
 fn search_in_node () {
     let mut hson = Hson::new();
     hson.parse(&LONG_DATA).unwrap();
@@ -201,6 +223,18 @@ fn search_in_node () {
 
     let vertex = hson.get_vertex(ids[0]).unwrap();
     assert_eq!(vertex.value_as_string().unwrap(), "test-2");
+}
+
+#[test]
+fn search_in_node_only () {
+    let mut hson = Hson::new();
+    hson.parse(&SHORT_DATA).unwrap();
+
+    let results = hson.search("div").unwrap();
+    assert_eq!(results.len(), 3);
+
+    let res = hson.search_in(results[0], ">attrs").unwrap();
+    assert_eq!(res.len(), 1);
 }
 
 #[test]

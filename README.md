@@ -1,10 +1,12 @@
 # hson
 JSON like format for HTML.  
-The parser can be used for other purposes, but its main goal is to represent a HTML structure in a JSON style.
+The parser can be used for other purposes, but its main goal is to represent a HTML structure in a JSON style.  
+Allow to query the data the same way the DOM is queried client-side through `QuerySelectorAll` method. 
 
 ## Main differences with standard json
 * Allow same key multiple times in same object
 * Does not allow `null` and `undefined`
+* Root element must be an object
 
 ## Usage
    [Parsing](#Parsing)  
@@ -48,7 +50,7 @@ let data = r#"{
               
 let mut hson = Hson::new();
 hson.parse(&data).unwrap();
-hson.print_nodes(true);
+hson.print_data(true);
 ```
 
 ### Stringifying
@@ -60,7 +62,7 @@ println!("{}", &s);
 ```
 
 ### Searching
-Searching works as the javascript querySelectorAll method.  
+Search is similar to the javascript `querySelectorAll` method.  
 ```rust
 use hson::{ Hson, Query, Search };
   
@@ -86,8 +88,11 @@ println!("\n{:?}\n", results);
 let results = hson.search("div>p attrs id='12'|rate='3'|trusted").unwrap();
 println!("\n{:?}\n", results);
   
-// Look for childs in a specific node
-let results = hson.search_in(&node_id, "div>p").unwrap();
+// Look for childs in a specific node, no recursion
+let results = hson.search_in(node_id, "div>p").unwrap();
+println!("\n{:?}\n", results);
+  
+let results = hson.search_in(node_id, ">p").unwrap();
 println!("\n{:?}\n", results);
 ```
 
