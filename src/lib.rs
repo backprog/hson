@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::vec::Vec;
 use std::iter::FromIterator;
 use std::io::{ ErrorKind, Error };
-use std::time::{ Instant };
 
 
 type Callback = fn(Event, u64);
@@ -81,7 +80,6 @@ pub struct Hson {
     pub indexes: Vec<u64>,
     instances: u64,
     controls: Controls,
-    process_start: Instant,
     callback: Option<Callback>,
     cache: HashMap<String, Vec<u64>>,
     id_count: u64,
@@ -102,7 +100,6 @@ impl Hson {
                 square_brackets: 0,
                 double_quotes: 0
             },
-            process_start: Instant::now(),
             callback: None,
             cache: HashMap::new(),
             id_count: 0,
@@ -123,7 +120,6 @@ impl Hson {
                 square_brackets: 0,
                 double_quotes: 0
             },
-            process_start: Instant::now(),
             callback: None,
             cache: HashMap::new(),
             id_count: start_id,
@@ -143,10 +139,10 @@ impl Hson {
 
         if l > 0 {
             // If structure does not start with curly bracket throw error
-            if data[0] != OPEN_CURLY {
-                let e = Error::new(ErrorKind::InvalidData, "Invalid character at 0");
-                return Err(e);
-            }
+//            if data[0] != OPEN_CURLY {
+//                let e = Error::new(ErrorKind::InvalidData, "Invalid character at 0");
+//                return Err(e);
+//            }
 
             loop {
                 let c = data[i];
@@ -1376,9 +1372,9 @@ pub trait Debug {
 
     fn print_data (&mut self, pretty: bool);
 
-    fn print_indexes (&self);
+    fn get_formatted_data (&mut self) -> String;
 
-    fn print_process_time (&self);
+    fn print_indexes (&self);
 
     fn print_controls (&self);
 
@@ -1416,85 +1412,87 @@ impl Debug for Hson {
             let s: String = self.data.iter().collect();
             println!("{}", &s);
         } else {
-            let mut i = 0;
-            let previous = ' ';
-            let mut indent = 0;
-            let l = self.data.len() - 1;
-            let mut in_array = false;
+            println!("{}", self.get_formatted_data());
+        }
+    }
 
-            loop {
-                let c = self.data[i];
-                self.controls_count(c, previous);
-                let in_string = self.controls.double_quotes > 0 && c != DOUBLE_QUOTES && previous != BACKSLASH;
+    fn get_formatted_data (&mut self) -> String {
+        let mut data_str = String::from("");
+        let mut i = 0;
+        let previous = ' ';
+        let mut indent = 0;
+        let l = self.data.len() - 1;
+        let mut in_array = false;
 
-                if !in_string {
-                    match self.controls.chars.iter().position(|&s| s == c) {
-                        Some(_) => {
-                            match c {
-                                OPEN_CURLY => {
-                                    in_array = false;
-                                    print!("{}", c);
-                                    indent += 1;
-                                    println!();
-                                    for _t in 0..indent {
-                                        print!("\t");
-                                    }
-                                },
-                                CLOSE_CURLY => {
-                                    indent -= 1;
-                                    println!();
-                                    for _t in 0..indent {
-                                        print!("\t");
-                                    }
-                                    print!("{}", c);
-                                },
-                                OPEN_ARR => {
-                                    in_array = true;
-                                    print!("{}", c);
-                                },
-                                CLOSE_ARR => {
-                                    in_array = false;
-                                    print!("{}", c);
-                                },
-                                COMMA => {
-                                    print!("{}", c);
-                                    if !in_array {
-                                        println!();
-                                        for _t in 0..indent {
-                                            print!("\t");
-                                        }
-                                    }
+        loop {
+            let c = self.data[i];
+            self.controls_count(c, previous);
+            let in_string = self.controls.double_quotes > 0 && c != DOUBLE_QUOTES && previous != BACKSLASH;
+
+            if !in_string {
+                match self.controls.chars.iter().position(|&s| s == c) {
+                    Some(_) => {
+                        match c {
+                            OPEN_CURLY => {
+                                in_array = false;
+                                data_str.push(c);
+                                indent += 1;
+                                data_str.push('\n');
+                                for _t in 0..indent {
+                                    data_str.push('\t');
                                 }
-                                _ => {
-                                    print!("{}", c);
+                            },
+                            CLOSE_CURLY => {
+                                indent -= 1;
+                                data_str.push('\n');
+                                for _t in 0..indent {
+                                    data_str.push('\t');
+                                }
+                                data_str.push(c);
+                            },
+                            OPEN_ARR => {
+                                in_array = true;
+                                data_str.push(c);
+                            },
+                            CLOSE_ARR => {
+                                in_array = false;
+                                data_str.push(c);
+                            },
+                            COMMA => {
+                                data_str.push(c);
+                                if !in_array {
+                                    data_str.push('\n');
+                                    for _t in 0..indent {
+                                        data_str.push('\t');
+                                    }
                                 }
                             }
-                        },
-                        None => {
-                            print!("{}", c);
+                            _ => {
+                                data_str.push(c);
+                            }
                         }
+                    },
+                    None => {
+                        data_str.push(c);
                     }
-                } else {
-                    print!("{}", c);
                 }
+            } else {
+                data_str.push(c);
+            }
 
-                i += 1;
-                if i > l {
-                    break;
-                }
+            i += 1;
+            if i > l {
+                break;
             }
         }
+
+        data_str
     }
 
     fn print_indexes (&self) {
         for idx in &self.indexes {
             println!("{}", idx);
         }
-    }
-
-    fn print_process_time (&self) {
-        let duration = self.process_start.elapsed();
-        println!("{:?}", duration);
     }
 
     fn print_controls (&self) {

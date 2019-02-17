@@ -56,6 +56,14 @@ lazy_static! {
 
         data
     };
+
+    static ref ARRAY_DATA: String = {
+        let mut data = String::new();
+        let mut file = File::open("tests/samples/array.hson").unwrap();
+        file.read_to_string(&mut data).unwrap();
+
+        data
+    };
 }
 
 #[test]
@@ -85,6 +93,14 @@ fn cant_parse () {
 
     let mut hson = Hson::new();
     hson.parse(&data).unwrap();
+}
+
+#[test]
+fn parse_array () {
+    let mut hson = Hson::new();
+    assert_eq!(hson.parse(&ARRAY_DATA).unwrap(), ());
+
+    assert_eq!(hson.indexes.len(), 17);
 }
 
 #[test]
@@ -235,6 +251,15 @@ fn search_in_node_only () {
 
     let res = hson.search_in(results[0], ">attrs").unwrap();
     assert_eq!(res.len(), 1);
+}
+
+#[test]
+fn search_in_array () {
+    let mut hson = Hson::new();
+    hson.parse(&ARRAY_DATA).unwrap();
+
+    let results = hson.search("id").unwrap();
+    assert_eq!(results.len(), 4);
 }
 
 #[test]
