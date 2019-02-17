@@ -328,6 +328,23 @@ fn deletion () {
 }
 
 #[test]
+fn replacement () {
+    let mut hson = Hson::new();
+    hson.parse(&HTML_DATA).unwrap();
+
+    let results = hson.search("attrs class").unwrap();
+    assert_eq!(results.len(), 3);
+
+    let replace = r#"{
+        "data": "test"
+    }"#;
+    hson.replace(results[0], replace).unwrap();
+
+    let results = hson.search("attrs data").unwrap();
+    assert_eq!(results.len(), 1);
+}
+
+#[test]
 fn vertex () {
     let mut hson = Hson::new();
     hson.parse(&SHORT_DATA).unwrap();

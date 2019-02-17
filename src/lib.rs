@@ -214,7 +214,7 @@ impl Hson {
 
 //                    println!("PARENT ARRAY {}", &parent_is_array);
 
-                        let key = if root || parent_is_array { [0, 0] } else {
+                        let key = if root { [1, 0] } else if parent_is_array { [0, 0] } else {
                             self.get_node_key_position(i, &data)?
                         };
                         let value = if root { [i, data.len()] } else {
@@ -584,6 +584,28 @@ impl Hson {
         }
     }
 
+    /// Retrieve position of a child node in its parent node
+    fn get_child_position (&self, node_id: u64, parent_id: u64) -> Result<usize, Error> {
+        let childs = self.get_all_childs(parent_id)?;
+        let mut i = 0;
+
+        if !childs.is_empty() {
+            for id in childs {
+                if id == node_id {
+                    return Ok(i)
+                }
+
+                i += 1;
+            }
+
+            let e = Error::new(ErrorKind::InvalidData, format!("{} has no {} node", parent_id, node_id));
+            return Err(e);
+        } else {
+            let e = Error::new(ErrorKind::InvalidData, format!("{} has no children", parent_id));
+            return Err(e);
+        }
+    }
+
     /// Extract the value from a start position
     fn extract_value (&self, data_start_pos: usize, data: &[char]) -> Result<String, Error> {
         let mut n = data_start_pos;
@@ -700,10 +722,13 @@ impl Hson {
             if let Some(n) = self.nodes.get_mut(key) {
                 if n.instance >= start {
                     n.instance += distance;
-                    n.key[0] += data_size;
-                    n.key[1] += data_size;
                     n.value[0] += data_size;
                     n.value[1] += data_size;
+
+                    if n.key != [0, 0] {
+                        n.key[0] += data_size;
+                        n.key[1] += data_size;
+                    }
                 }
             }
 
@@ -789,10 +814,13 @@ impl Hson {
             if let Some(n) = self.nodes.get_mut(key) {
                 if n.instance >= start {
                     n.instance -= distance;
-                    n.key[0] -= data_size;
-                    n.key[1] -= data_size;
                     n.value[0] -= data_size;
                     n.value[1] -= data_size;
+
+                    if n.key != [0, 0] {
+                        n.key[0] -= data_size;
+                        n.key[1] -= data_size;
+                    }
                 }
             }
 
@@ -827,8 +855,11 @@ impl Hson {
                     if i == 0 {
                         n.value[1] += 1;
                     } else if n.instance > instance {
-                        n.key[0] += 1;
-                        n.key[1] += 1;
+                        if n.key != [0, 0] {
+                            n.key[0] += 1;
+                            n.key[1] += 1;
+                        }
+
                         n.value[0] += 1;
                         n.value[1] += 1;
                     } else if n.id == parent_id {
@@ -1061,9 +1092,11 @@ impl Query for Hson {
 
 
 pub trait Ops {
-    fn insert (&mut self, node_id: u64, idx: usize, s: &str) -> Result<(), Error>;
+    fn insert (&mut self, node_id: u64, insert_pos: usize, data_to_insert: &str) -> Result<(), Error>;
 
     fn remove (&mut self, node_id: u64) -> Result<(), Error>;
+
+    fn replace (&mut self, node_id: u64, data_to_insert: &str) -> Result<(), Error>;
 }
 
 impl Ops for Hson {
@@ -1179,9 +1212,9 @@ impl Ops for Hson {
                 let instances_range = childs.len() + 1;
                 let start_instance = node.instance + childs.len() as u64 + 1;
                 let parent_id = node.parent;
-                let data_start_pos = node.key[0];
+                let data_start_pos = if node.key != [0, 0] { node.key[0] - 1 } else { node.value[0] };
                 let mut data_end_pos = node.value[1] + 1;
-                let mut data_size = node.value[1] - node.key[0];
+                let mut data_size = node.value[1] - data_start_pos;
 
                 if self.data[data_end_pos] == COMMA {
                     data_end_pos += 1;
@@ -1217,6 +1250,23 @@ impl Ops for Hson {
         }
 
         Ok(())
+    }
+
+    /// Replace a node with the provided hson
+    fn replace (&mut self, node_id: u64, data_to_insert: &str) -> Result<(), Error> {
+        if let Some(node) = self.get_vertex(node_id) {
+            let parent_id = node.parent;
+
+            if let Some(parent) = self.get_vertex(parent_id) {
+                let position = self.get_child_position(node_id, parent_id)?;
+
+                self.remove(node_id)?;
+                return self.insert(parent.id, position, data_to_insert)
+            }
+        }
+
+        let e = Error::new(ErrorKind::InvalidData, format!("{} does not exist", node_id));
+        return Err(e);
     }
 }
 
@@ -1677,6 +1727,9 @@ impl SearchUtils for Hson {
                 let parts: Vec<&str> = query.split('=').collect();
                 let mut t = self.query_on(*r, parts[0], true)?;
                 t = self.filter_equality_childs(query, &t)?;
+                results.append(&mut t);
+            } else if query == "*" {
+                let mut t = self.get_all_childs(*r)?;
                 results.append(&mut t);
             } else {
                 let mut t = self.query_on(*r, query, true)?;
