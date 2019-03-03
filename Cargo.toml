@@ -1,6 +1,6 @@
 [package]
 name = "hson"
-version = "0.1.7"
+version = "0.1.8"
 authors = ["Backprog"]
 edition = "2018"
 homepage = "https://github.com/backprog/hson"

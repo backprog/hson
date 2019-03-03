@@ -1171,7 +1171,7 @@ impl Ops for Hson {
 
                 let root_id = hson.get_root();
                 if let Some(n) = hson.nodes.get(&root_id) {
-                    slice_range = n.value[1] - n.value[0];
+                    slice_range = n.value[1] - n.value[0] - 1;
                 }
 
                 let num_keys = hson.nodes.keys().len() as u64;
@@ -1212,9 +1212,14 @@ impl Ops for Hson {
                 let instances_range = childs.len() + 1;
                 let start_instance = node.instance + childs.len() as u64 + 1;
                 let parent_id = node.parent;
-                let data_start_pos = if node.key != [0, 0] { node.key[0] - 1 } else { node.value[0] };
+                let mut data_start_pos = if node.key != [0, 0] { node.key[0] - 1 } else { node.value[0] };
                 let mut data_end_pos = node.value[1] + 1;
                 let mut data_size = node.value[1] - data_start_pos;
+
+                if data_start_pos > 0 && self.data[data_start_pos - 1] == COMMA {
+                    data_start_pos -= 1;
+                    data_size += 1;
+                }
 
                 if self.data[data_end_pos] == COMMA {
                     data_end_pos += 1;
@@ -1238,6 +1243,10 @@ impl Ops for Hson {
                 self.left_push_instances(start_instance, instances_range as u64, data_size)?;
                 self.remove_from_data(data_start_pos, data_end_pos);
                 self.remove_from_nodes(parent_id, node_id);
+
+                if let Some(node) = self.nodes.get_mut(&parent_id) {
+                    node.value[1] -= data_size;
+                };
             },
             None => {
                 let e = Error::new(ErrorKind::InvalidData, format!("Invalid uid {}", node_id));
@@ -1422,6 +1431,8 @@ pub trait Debug {
 
     fn print_data (&mut self, pretty: bool);
 
+    fn get_raw_data (&mut self) -> String;
+
     fn get_formatted_data (&mut self) -> String;
 
     fn print_indexes (&self);
@@ -1459,11 +1470,15 @@ impl Debug for Hson {
 
     fn print_data (&mut self, pretty: bool) {
         if !pretty {
-            let s: String = self.data.iter().collect();
+            let s: String = self.get_raw_data();
             println!("{}", &s);
         } else {
             println!("{}", self.get_formatted_data());
         }
+    }
+
+    fn get_raw_data (&mut self) -> String {
+        self.data.iter().collect()
     }
 
     fn get_formatted_data (&mut self) -> String {
