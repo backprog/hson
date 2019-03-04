@@ -35,7 +35,8 @@ pub enum Kind {
     Float,
     String,
     Bool,
-    Null
+    Null,
+    Undefined
 }
 
 /// Hson node
@@ -180,7 +181,8 @@ impl Hson {
                     match kind {
                         Kind::Bool |
                         Kind::Integer |
-                        Kind::Float => {
+                        Kind::Float |
+                        Kind::Undefined => {
                             skip = true;
                         },
                         _ => {}
@@ -221,7 +223,8 @@ impl Hson {
                             match kind {
                                 Kind::Bool |
                                 Kind::Integer |
-                                Kind::Float => [i, data.len()],
+                                Kind::Float |
+                                Kind::Undefined => [i, data.len()],
                                 _ => [i + 1, data.len()]
                             }
 
@@ -262,7 +265,8 @@ impl Hson {
                     let close = match kind {
                         Kind::Bool |
                         Kind::Integer |
-                        Kind::Float => true,
+                        Kind::Float |
+                        Kind::Undefined => true,
                         _ => {
                             match c {
                                 CLOSE_CURLY => true,
@@ -286,7 +290,8 @@ impl Hson {
                         match kind {
                             Kind::Bool |
                             Kind::Integer |
-                            Kind::Float => {
+                            Kind::Float |
+                            Kind::Undefined => {
                                 let v = self.extract_value(i, &data)?;
                                 let current_node_id = self.get_previous_opened_node(self.nodes.len(), false, &kind)?;
 
@@ -509,6 +514,8 @@ impl Hson {
                     k = Kind::Float;
                 } else if v == "true" || v == "false" {
                     k = Kind::Bool;
+                } else if v == "null" {
+                    k = Kind::Undefined;
                 } else {
                     let e = Error::new(ErrorKind::InvalidData, format!("Invalid value {} at {}", v, data_start_pos));
                     return Err(e);
@@ -538,7 +545,8 @@ impl Hson {
                         match n.kind {
                             Kind::Float |
                             Kind::Integer |
-                            Kind::Bool => { continue },
+                            Kind::Bool |
+                            Kind::Undefined => { continue },
                             _ => {
                                 if kind == &Kind::Null || kind == &n.kind {
                                     prev_node_uid = n.id;
