@@ -148,12 +148,12 @@ impl Hson {
             loop {
                 let c = data[i];
 
-                in_string = self.controls.double_quotes > 0 && c != DOUBLE_QUOTES && previous != BACKSLASH;
                 string_just_closed = self.controls.double_quotes > 0 && c == DOUBLE_QUOTES && previous != BACKSLASH;
+                in_string = self.controls.double_quotes > 0 && !string_just_closed;
 
-//            println!("CHAR: {}", &c);
-//            println!("IN_STRING: {}", &in_string);
-//            println!("STRING CLOSED: {}", &string_just_closed);
+                println!("CHAR: {}", &c);
+                println!("IN_STRING: {}", &in_string);
+                println!("STRING CLOSED: {}", &string_just_closed);
 
                 if !in_string && self.controls.chars.iter().any(|&s| s == c) {
                     self.controls_count(c, previous);

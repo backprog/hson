@@ -1,0 +1,123 @@
+[
+  "\n\nSELECT \n",
+  [
+    {
+      "type": "if",
+      "condition": {
+        "type": "math",
+        "expression": [
+          {
+            "type": "references",
+            "id": "car",
+            "path": [
+              {
+                "type": "property",
+                "id":"foo"
+              }
+            ],
+            "leader": "$"
+          },
+          {
+            "type": "references",
+            "id":"moshe",
+            "path": [
+              {
+                "type": "property",
+                "id":"bar"
+              }
+            ],
+            "leader": "$"
+          }
+        ],
+        "operator": "=="
+      },
+      "pos": {
+        "first_line": 4,
+        "last_line": 4,
+        "first_column": 0,
+        "last_column": 29
+      }
+    },
+    "  id, name, title\n",
+    {
+      "type": "else",
+      "pos": {
+        "first_line": 6,
+        "last_line": 6,
+        "first_column": 0,
+        "last_column": 7
+      }
+    },
+    "  id, marketer, publisher\n"
+  ],
+  "FROM ",
+  {
+    "type": "references",
+    "id": "data",
+    "leader": "$",
+    "prue": true,
+    "pos": {
+      "first_line": 9,
+      "last_line": 9,
+      "first_column": 5,
+      "last_column": 10
+    }
+  },
+  "\n",
+  "WHERE ",
+  {
+    "type": "references",
+    "id": "pid",
+    "leader": "$",
+    "prue": true,
+    "pos": {
+      "first_line": 10,
+      "last_line": 10,
+      "first_column": 6,
+      "last_column": 10
+    }
+  },
+  " ",
+  "= ",
+  {
+    "type": "references",
+    "id": "pid_value",
+    "leader": "$",
+    "prue": true,
+    "pos": {
+      "first_line": 10,
+      "last_line": 10,
+      "first_column": 13,
+      "last_column": 23
+    }
+  },
+  " ",
+  "AND ",
+  {
+    "type": "references",
+    "id": "cid",
+    "leader": "$",
+    "prue": true,
+    "pos": {
+      "first_line": 10,
+      "last_line": 10,
+      "first_column": 28,
+      "last_column": 32
+    }
+  },
+  " ",
+  "= ",
+  {
+    "type": "references",
+    "id": "cid_value",
+    "leader": "$",
+    "prue": true,
+    "pos": {
+      "first_line": 10,
+      "last_line": 10,
+      "first_column": 35,
+      "last_column": 45
+    }
+  },
+  "\n\n"
+]

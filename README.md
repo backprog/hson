@@ -5,7 +5,6 @@ Allow to query the data the same way the DOM is queried client-side through `Que
 
 ## Main differences with standard json
 * Allow same key multiple times in same object
-* Does not allow `null` and `undefined`
 
 ## Usage
    [Parsing](#Parsing)  

@@ -64,6 +64,14 @@ lazy_static! {
 
         data
     };
+
+    static ref INTRICATE_DATA: String = {
+        let mut data = String::new();
+        let mut file = File::open("tests/samples/intricate.hson").unwrap();
+        file.read_to_string(&mut data).unwrap();
+
+        data
+    };
 }
 
 #[test]
@@ -76,6 +84,12 @@ fn can_parse () {
 fn can_parse_uri () {
     let mut hson = Hson::new();
     assert_eq!(hson.parse(&HTML_DATA).unwrap(), ());
+}
+
+#[test]
+fn can_parse_intricate () {
+    let mut hson = Hson::new();
+    assert_eq!(hson.parse(&INTRICATE_DATA).unwrap(), ());
 }
 
 #[test]
